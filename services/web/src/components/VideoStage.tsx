@@ -93,8 +93,9 @@ export function VideoStage({ showBoxes, showStats, onPickSpecies }: Props) {
       />
       {showStats && data && (
         <div class="absolute left-3 top-3 flex items-center gap-2 rounded-lg bg-black/55 px-2.5 py-1 text-xs font-medium tabular-nums text-white backdrop-blur">
-          <span class="inline-block h-1.5 w-1.5 rounded-full bg-live" />
-          {n} bird{n === 1 ? "" : "s"} · {data.fps} fps · {data.detect_ms} ms
+          <span class={`inline-block h-1.5 w-1.5 rounded-full ${data.idle ? "bg-ink-subtle" : "bg-live"}`} />
+          {data.idle ? "idle" : `${n} bird${n === 1 ? "" : "s"}`} · {data.fps} fps ·{" "}
+          {data.idle ? "gated" : `${data.detect_ms}+${data.classify_ms} ms`}
         </div>
       )}
     </div>

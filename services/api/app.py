@@ -66,6 +66,12 @@ YOLO_IMGSZ = int(os.environ.get("YOLO_IMGSZ", "960"))   # 960>640 finds more sma
 CONF = float(os.environ.get("YOLO_CONF", "0.15"))       # lower = better recall (verified no false+)
 SPECIES_CONF = float(os.environ.get("SPECIES_CONF", "0.30"))
 TRACK_EXPIRE_SEC = float(os.environ.get("TRACK_EXPIRE_SEC", "10"))
+# Motion gating: skip the expensive YOLO pass when the scene is idle (feeder empty
+# and still). Wakes instantly on motion or while a bird is being tracked.
+MOTION_GATING = os.environ.get("MOTION_GATING", "1").lower() not in ("0", "false", "no", "")
+MOTION_MIN_AREA = int(os.environ.get("MOTION_MIN_AREA", "80"))  # fg pixels (in 320x180) that count as motion
+MOTION_IDLE_SEC = float(os.environ.get("MOTION_IDLE_SEC", "3"))  # keep detecting this long after last motion
+IDLE_POLL = float(os.environ.get("IDLE_POLL", "0.12"))          # motion-check cadence while idle
 URL_REFRESH_SEC = 1200.0                                        # re-resolve URL proactively (~20 min)
 STALL_SEC = float(os.environ.get("STALL_SEC", "20"))           # kill+restart ffmpeg if no frame for this long
 
@@ -242,7 +248,10 @@ class State:
         self.proc = None                   # current ffmpeg process (so the watchdog can kill it)
         self.detections: list[dict] = []
         self.fps = 0.0
-        self.detect_ms = 0.0
+        self.detect_ms = 0.0       # YOLO detect+track time
+        self.classify_ms = 0.0     # species classification time
+        self.motion_area = 0       # foreground pixels from the motion gate
+        self.idle = False          # true when the motion gate is skipping detection
         self.running = True
 
 
@@ -391,6 +400,8 @@ def detector():
     clf.set_allow(load_allowlist())        # geographic prior (eBird or fallback)
     print(f"[detector] {YOLO_MODEL} + ByteTrack + species voting + visit logging")
     tracks = {}
+    bg = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=32, detectShadows=False)
+    last_motion = 0.0
 
     while state.running:
         cycle_start = time.time()
@@ -399,11 +410,31 @@ def detector():
         if lf is None:
             time.sleep(0.05); continue
         frame = lf.copy()
+        now = time.time()
+
+        # Cheap motion check (also keeps the background model fresh) — every cycle.
+        fg = bg.apply(cv2.resize(frame, (320, 180)))
+        motion_area = int(cv2.countNonZero(fg))
+        if motion_area > MOTION_MIN_AREA:
+            last_motion = now
+
+        # Idle: gating on, nothing tracked, no recent motion -> skip the expensive
+        # YOLO pass and poll cheaply. Wakes instantly on motion or a lingering track.
+        if MOTION_GATING and not tracks and (now - last_motion) > MOTION_IDLE_SEC:
+            with state.lock:
+                state.detections = []
+                state.detect_ms = 0.0
+                state.classify_ms = 0.0
+                state.motion_area = motion_area
+                state.idle = True
+            time.sleep(IDLE_POLL)
+            continue
 
         td = time.perf_counter()
         res = model.track(frame, imgsz=YOLO_IMGSZ, classes=[bird_id], conf=CONF,
                           persist=True, tracker="bytetrack.yaml", verbose=False)[0]
-        now = time.time()
+        yolo_ms = (time.perf_counter() - td) * 1000
+        clf_ms = 0.0
         dets = []
         for b in res.boxes:
             if b.id is None:
@@ -412,7 +443,9 @@ def detector():
             x1, y1, x2, y2 = map(int, b.xyxy[0])
             pad = 8
             crop = frame[max(0, y1 - pad):y2 + pad, max(0, x1 - pad):x2 + pad]
+            _tc = time.perf_counter()
             preds = clf.classify(crop, topk=1)
+            clf_ms += (time.perf_counter() - _tc) * 1000
             sp, sc = (preds[0][0], preds[0][2]) if preds else ("Bird", 0.0)
 
             t = tracks.get(tid)
@@ -449,7 +482,10 @@ def detector():
 
         with state.lock:
             state.detections = dets
-            state.detect_ms = (time.perf_counter() - td) * 1000
+            state.detect_ms = round(yolo_ms, 1)
+            state.classify_ms = round(clf_ms, 1)
+            state.motion_area = motion_area
+            state.idle = False
 
         dt = time.time() - cycle_start          # pace so we don't peg the CPU
         if dt < DETECT_INTERVAL:
@@ -497,13 +533,15 @@ def detections():
     with state.lock:
         raw = state.detections
         fps, dms = round(state.fps, 1), round(state.detect_ms, 1)
+        clf_ms, motion, idle = state.classify_ms, state.motion_area, state.idle
     # Normalize boxes to 0..1 so the web client can scale them to any video size.
     dets = [{"id": d["id"],
              "box": [round(d["box"][0] / FRAME_W, 4), round(d["box"][1] / FRAME_H, 4),
                      round(d["box"][2] / FRAME_W, 4), round(d["box"][3] / FRAME_H, 4)],
              "species": d["species"], "species_conf": d["species_conf"]}
             for d in raw]
-    return JSONResponse({"detections": dets, "fps": fps, "detect_ms": dms})
+    return JSONResponse({"detections": dets, "fps": fps, "detect_ms": dms,
+                         "classify_ms": clf_ms, "motion_area": motion, "idle": idle})
 
 
 @app.get("/summary")

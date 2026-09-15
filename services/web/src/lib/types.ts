@@ -11,6 +11,9 @@ export interface DetectionsResponse {
   detections: Detection[];
   fps: number;
   detect_ms: number;
+  classify_ms: number;
+  motion_area: number;
+  idle: boolean;
 }
 
 export interface SummaryRow {
