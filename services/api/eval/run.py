@@ -37,9 +37,10 @@ def get_classifier(name: str, use_prior: bool):
         if use_prior:
             clf.set_allow(load_allowlist())
         return lambda crop, k: [p[0] for p in clf.classify(crop, topk=k)]
-    # Placeholder for the A/B target — wire up when we add it.
     if name == "bioclip":
-        raise SystemExit("bioclip classifier not wired up yet")
+        from bioclip_classifier import BioCLIPClassifier
+        bio = BioCLIPClassifier(sorted(load_allowlist()))
+        return lambda crop, k: [p[0] for p in bio.classify(crop, topk=k)]
     raise SystemExit(f"unknown model: {name}")
 
 

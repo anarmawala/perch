@@ -20,3 +20,6 @@ ai-edge-litert>=1.0.0           # TFLite runtime for the iNat bird model
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 requests>=2.31.0
+
+# eval harness only (BioCLIP A/B) — not used by the live pipeline
+open-clip-torch>=2.24.0
