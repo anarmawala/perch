@@ -411,6 +411,10 @@ $RECYCLE.BIN/
 # Secrets: keep the template, never the real env
 !.env.example
 
+# Local-only files (personal notes, planning, overrides) — never committed
+*.local
+*.local.*
+
 # The Python template's lib/ and build/ patterns would otherwise swallow the
 # web app's source folder — keep it.
 !services/web/src/lib/
