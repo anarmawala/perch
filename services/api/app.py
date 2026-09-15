@@ -510,6 +510,12 @@ def detector():
 app = FastAPI(title="Perch API")
 app.mount("/captures", StaticFiles(directory=str(CAPTURES)), name="captures")
 
+# Eval review crops (iNat-vs-BioCLIP disagreements from eval/compare.py)
+REVIEW_DIR = DATA_DIR / "review"
+REVIEW_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/review-imgs", StaticFiles(directory=str(REVIEW_DIR)), name="review-imgs")
+_VERDICTS = DATA_DIR / "review_verdicts.json"
+
 
 @app.on_event("startup")
 def _start():
@@ -654,6 +660,106 @@ def notify_test():
 def notify_status():
     return {"configured": bool(notify.NTFY_TOPIC),
             "topic": notify.NTFY_TOPIC, "server": notify.NTFY_SERVER}
+
+
+# --- eval adjudication dashboard (iNat vs BioCLIP) ---------------------------
+@app.get("/eval/items")
+def eval_items():
+    try:
+        manifest = json.loads((REVIEW_DIR / "manifest.json").read_text())
+    except Exception:
+        manifest = []
+    try:
+        verdicts = json.loads(_VERDICTS.read_text())
+    except Exception:
+        verdicts = {}
+    return {"items": manifest, "verdicts": verdicts}
+
+
+@app.post("/eval/verdict")
+async def eval_verdict(req: Request):
+    d = await req.json()
+    try:
+        verdicts = json.loads(_VERDICTS.read_text())
+    except Exception:
+        verdicts = {}
+    verdicts[d["file"]] = d["winner"]
+    _VERDICTS.write_text(json.dumps(verdicts))
+    v = list(verdicts.values())
+    return {"inat": v.count("inat"), "bioclip": v.count("bioclip"),
+            "neither": v.count("neither"), "total": len(v)}
+
+
+@app.get("/eval", response_class=HTMLResponse)
+def eval_dashboard():
+    return EVAL_HTML
+
+
+EVAL_HTML = """
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perch — iNat vs BioCLIP</title>
+<style>
+  :root{color-scheme:light}
+  body{margin:0;background:#f6f7f9;color:#1a1f26;font-family:system-ui,sans-serif;
+       display:flex;flex-direction:column;align-items:center;min-height:100vh}
+  header{width:100%;text-align:center;padding:14px;font-weight:600;border-bottom:1px solid #e4e8ec;background:#fff}
+  #tally{margin:12px;font-variant-numeric:tabular-nums;color:#667085}
+  #crop{width:min(90vw,460px);height:min(90vw,460px);object-fit:contain;background:#000;border-radius:14px}
+  .btns{display:flex;flex-direction:column;gap:10px;width:min(90vw,460px);margin-top:14px}
+  button{padding:14px;border-radius:12px;border:1px solid #e4e8ec;background:#fff;font-size:16px;font-weight:600;cursor:pointer}
+  button.inat{border-color:#2f6fed;color:#2f6fed} button.bio{border-color:#1f9d57;color:#1f9d57}
+  button:hover{filter:brightness(0.97)}
+  #progress{margin:10px;color:#98a2b3;font-size:13px}
+  kbd{background:#eef1f4;border-radius:4px;padding:1px 5px;font-size:12px}
+</style></head><body>
+<header>Which is right?  <kbd>1</kbd> iNat · <kbd>2</kbd> BioCLIP · <kbd>3</kbd> neither · <kbd>←</kbd><kbd>→</kbd></header>
+<div id="tally">loading…</div>
+<img id="crop" alt="crop">
+<div class="btns">
+  <button class="inat" id="binat"></button>
+  <button class="bio" id="bbio"></button>
+  <button id="bneither">Neither / unsure</button>
+</div>
+<div id="progress"></div>
+<script>
+let items=[], verdicts={}, i=0;
+const $=id=>document.getElementById(id);
+async function load(){
+  const d=await (await fetch('/api/eval/items')).json();
+  items=d.items||[]; verdicts=d.verdicts||{};
+  i=items.findIndex(x=>!(x.file in verdicts)); if(i<0)i=0;
+  render();
+}
+function tallyCounts(){const v=Object.values(verdicts);
+  return {inat:v.filter(x=>x=='inat').length,bioclip:v.filter(x=>x=='bioclip').length,
+          neither:v.filter(x=>x=='neither').length,total:v.length};}
+function render(){
+  if(!items.length){$('tally').textContent='No disagreements yet — run eval/compare.py.';
+    $('crop').style.display='none';return;}
+  const it=items[i];
+  $('crop').src='/api/review-imgs/'+encodeURIComponent(it.file);
+  $('binat').textContent='iNat: '+it.inat+'  ('+Math.round(it.inat_conf*100)+'%)';
+  $('bbio').textContent='BioCLIP: '+it.bioclip+'  ('+Math.round(it.bioclip_conf*100)+'%)';
+  const t=tallyCounts();
+  $('tally').innerHTML='iNat <b>'+t.inat+'</b> · BioCLIP <b>'+t.bioclip+'</b> · neither '+t.neither+' · judged '+t.total+'/'+items.length;
+  $('progress').textContent='#'+(i+1)+' of '+items.length+(it.file in verdicts?'  ✓ '+verdicts[it.file]:'');
+}
+async function vote(w){
+  const it=items[i]; verdicts[it.file]=w;
+  fetch('/api/eval/verdict',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({file:it.file,winner:w})});
+  if(i<items.length-1)i++; render();
+}
+$('binat').onclick=()=>vote('inat'); $('bbio').onclick=()=>vote('bioclip'); $('bneither').onclick=()=>vote('neither');
+addEventListener('keydown',e=>{
+  if(e.key=='1')vote('inat'); else if(e.key=='2')vote('bioclip'); else if(e.key=='3')vote('neither');
+  else if(e.key=='ArrowRight'&&i<items.length-1){i++;render();}
+  else if(e.key=='ArrowLeft'&&i>0){i--;render();}
+});
+load();
+</script></body></html>
+"""
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -53,6 +53,7 @@ def main():
 
     total = agree = 0
     patterns = Counter()
+    manifest = []
     for p in crops:
         c = cv2.imread(p)
         if c is None:
@@ -61,16 +62,22 @@ def main():
         b = bio.classify(c, 1)
         if not a or not b:
             continue
-        an, bn = a[0][0], b[0][0]
+        (an, _, ac), (bn, _, bc) = a[0], b[0]
         total += 1
         if an == bn:
             agree += 1
         else:
             patterns[f"iNat: {an:22s} | BioCLIP: {bn}"] += 1
-            dst = f"iNat-{an.replace(' ', '')}__BioCLIP-{bn.replace(' ', '')}__{os.path.basename(p)}"
-            shutil.copy(p, os.path.join(review, dst))
+            fn = os.path.basename(p)
+            shutil.copy(p, os.path.join(review, fn))
+            manifest.append({"file": fn, "inat": an, "inat_conf": round(ac, 3),
+                             "bioclip": bn, "bioclip_conf": round(bc, 3)})
         if total % 50 == 0:
             print(f"  …{total} crops", flush=True)
+
+    import json
+    with open(os.path.join(review, "manifest.json"), "w") as fh:
+        json.dump(manifest, fh)
 
     if not total:
         print("No crops found. Run eval/seed.py first.")
