@@ -1,0 +1,24 @@
+# Dev overrides — hot reload for both services, no local installs.
+# Run:  npm run dev   (or: docker compose -f compose.yaml -f compose.dev.yaml up --build)
+#   web -> http://localhost:5173  (Vite HMR, proxies /api to the api container)
+#   api -> http://localhost:8000  (uvicorn --reload)
+services:
+  api:
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./services/api:/app # live source for --reload
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+
+  web:
+    build:
+      context: ./services/web
+      target: dev
+    environment:
+      - VITE_API_PROXY=http://api:8000
+    volumes:
+      - ./services/web:/app # live source for HMR
+      - /app/node_modules # keep the image's node_modules
+    ports:
+      - "5173:5173"

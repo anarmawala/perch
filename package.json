@@ -3,7 +3,11 @@
   "private": true,
   "description": "Perch — backyard wildlife camera.",
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "dev": "docker compose -f compose.yaml -f compose.dev.yaml up --build",
+    "up": "docker compose up -d --build",
+    "down": "docker compose down",
+    "logs": "docker compose logs -f"
   },
   "devDependencies": {
     "husky": "^9.1.6"

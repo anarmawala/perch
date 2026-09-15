@@ -2,7 +2,7 @@
 """
 Live "X-Ray" web app (prototype) with tracking, species voting, and visit logging.
 
-Pipeline (all tuned to stay light on a low-power CPU / Intel NUC):
+Pipeline (all tuned to stay light on a low-power CPU):
   stream -> YOLO track (yolov8s + ByteTrack) -> crop -> species (iNat MobileNet)
          -> vote species per tracked bird -> log each visit to SQLite
          -> serve: live MJPEG + boxes, "on screen now" panel, and a /timeline gallery.
@@ -44,7 +44,7 @@ from classifier import BirdClassifier
 from region import load_allowlist
 
 # Stop inference from grabbing every CPU core — the #1 cause of stream lag, and
-# essential on a low-power Intel NUC. Must be set before/around torch use.
+# essential on a low-power host. Must be set before/around torch use.
 INFER_THREADS = int(os.environ.get("INFER_THREADS", "3"))
 os.environ.setdefault("OMP_NUM_THREADS", str(INFER_THREADS))
 cv2.setNumThreads(INFER_THREADS)

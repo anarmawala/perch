@@ -9,7 +9,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}"],
     languageOptions: {
       globals: { ...globals.browser },
     },
@@ -18,6 +18,11 @@ export default tseslint.config(
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
     },
+  },
+  {
+    // build/config files run in Node
+    files: ["*.config.{ts,js}"],
+    languageOptions: { globals: { ...globals.node } },
   },
   // Turn off stylistic rules that conflict with Prettier (Prettier owns formatting).
   prettier,

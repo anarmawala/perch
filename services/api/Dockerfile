@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# uv — fast, reproducible Python installs (much quicker than pip for torch/ultralytics)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 # ffmpeg decodes the live stream; libgl/glib satisfy OpenCV's runtime deps.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg libgl1 libglib2.0-0 \
@@ -8,12 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # CPU-only torch FIRST — the default PyPI torch wheel drags in ~2 GB of CUDA
-# libraries that are useless on this CPU-only NUC. This keeps the image small
-# and the build fast. ultralytics then finds torch already satisfied.
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# libraries that are useless on a CPU-only host. This keeps the image small.
+RUN uv pip install --system --no-cache torch torchvision \
+    --index-url https://download.pytorch.org/whl/cpu
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv pip install --system --no-cache -r requirements.txt
 
 COPY . .
 

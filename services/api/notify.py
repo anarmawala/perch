@@ -16,7 +16,7 @@ from pathlib import Path
 
 NTFY_SERVER = os.environ.get("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
-# Optional URL the notification opens when tapped (e.g. http://<nuc-ip>:8000/timeline)
+# Optional URL the notification opens when tapped (e.g. http://<server-ip>:8000/timeline)
 CLICK_URL = os.environ.get("PUBLIC_URL", "")
 
 

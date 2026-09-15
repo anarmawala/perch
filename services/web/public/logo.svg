@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#1f9d57" />
+  <!-- minimalist bird in flight -->
+  <path
+    d="M92 306 Q 188 190 256 292 Q 324 190 420 306"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="42"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

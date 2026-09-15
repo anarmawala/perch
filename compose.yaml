@@ -1,0 +1,22 @@
+# Production. Deploy = clone, create services/api/.env, then: docker compose up -d --build
+# The web container serves the built app and reverse-proxies /api to the api container,
+# so everything is one origin on port 8000.
+services:
+  api:
+    build: ./services/api
+    restart: unless-stopped
+    env_file:
+      - path: ./services/api/.env
+        required: false
+    volumes:
+      - ./data:/app/data # db, captured photos, prefs persist here
+
+  web:
+    build:
+      context: ./services/web
+      target: prod
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8000:80"
