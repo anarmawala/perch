@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# uv — fast, reproducible Python installs (much quicker than pip for torch/ultralytics)
+# uv — fast, reproducible Python installs from the committed uv.lock.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # ffmpeg decodes the live stream; libgl/glib satisfy OpenCV's runtime deps.
@@ -10,13 +10,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# CPU-only torch FIRST — the default PyPI torch wheel drags in ~2 GB of CUDA
-# libraries that are useless on a CPU-only host. This keeps the image small.
-RUN uv pip install --system --no-cache torch torchvision \
-    --index-url https://download.pytorch.org/whl/cpu
+# Compile bytecode for faster cold starts; copy (don't hardlink) wheels into the layer.
+# The lockfile pins CPU-only torch (see pyproject [tool.uv.sources]), so no CUDA bloat.
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/app/.venv/bin:$PATH"
 
-COPY requirements.txt .
-RUN uv pip install --system --no-cache -r requirements.txt
+# Dependencies first — this layer is cached and only rebuilds when deps change.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-cache
 
 COPY . .
 

@@ -1,0 +1,41 @@
+[project]
+name = "perch-api"
+version = "0.1.0"
+description = "Perch — backyard bird-watching camera: detection, species ID, visit logging."
+requires-python = ">=3.11,<3.13"  # ML wheels (torch/litert) not yet on 3.13+
+
+dependencies = [
+    # stream + capture
+    "yt-dlp>=2024.1.0",
+    "opencv-python-headless>=4.8.0",  # use opencv-python for cv2.imshow windows
+    "numpy>=1.24.0",
+    # detection + tracking
+    "ultralytics>=8.3.0",             # yolov8s; exportable to OpenVINO for Intel CPUs
+    "lapx>=0.5.0",                    # linear assignment, required by ByteTrack
+    # species classification
+    "ai-edge-litert>=1.0.0",         # TFLite runtime for the iNat bird model (eval baseline)
+    "open-clip-torch>=2.24.0",       # BioCLIP — the live species classifier
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    # live web app
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "requests>=2.31.0",
+]
+
+# The API runs only in the (Linux) Docker image — dev and prod both. Locking for
+# Linux alone keeps torch on the CPU wheels below and avoids resolving macOS wheels.
+[tool.uv]
+package = false  # this is an app run from source, not a library to build/install
+environments = ["sys_platform == 'linux'"]
+
+# CPU-only torch. The default PyPI wheels drag in ~2 GB of CUDA libraries that are
+# useless on a CPU host; this pins torch/torchvision to PyTorch's CPU index.
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

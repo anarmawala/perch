@@ -12,7 +12,7 @@ Usage:
     python grab_frames.py --url "https://www.youtube.com/watch?v=<live_id>"
     python grab_frames.py --url "<youtube_or_rtsp_url>" --out captures --min-area 800
 
-Deps: see requirements.txt  (yt-dlp, opencv-python, numpy)
+Deps: see pyproject.toml  (yt-dlp, opencv-python, numpy) — `uv sync`
 """
 
 import argparse
@@ -40,7 +40,7 @@ def resolve_stream_url(source: str) -> str:
             capture_output=True, text=True, check=True,
         )
     except FileNotFoundError:
-        sys.exit("yt-dlp not found. Install it:  pip install -r requirements.txt")
+        sys.exit("yt-dlp not found. Install deps:  uv sync")
     except subprocess.CalledProcessError as e:
         sys.exit(f"yt-dlp failed to resolve the stream:\n{e.stderr}")
     # Last non-empty line is the media URL.

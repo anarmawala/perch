@@ -28,10 +28,11 @@ pace — so the video never stutters even when inference is slow.
 ## Run (local dev)
 
 ```bash
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
-STREAM_URL=... NTFY_TOPIC=... .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
+uv sync                     # installs from uv.lock into .venv (CPU-only torch)
+STREAM_URL=... NTFY_TOPIC=... uv run uvicorn app:app --host 0.0.0.0 --port 8000
 ```
-For local dev you need **ffmpeg** installed (`brew install ffmpeg` /
+Dependencies are pinned in `pyproject.toml` + `uv.lock`; run `uv lock` after
+changing them. For local dev you need **ffmpeg** installed (`brew install ffmpeg` /
 `apt install ffmpeg`). The Docker image bundles ffmpeg, so the containerized
 deploy needs nothing on the host. Config is via environment variables — see
 `.env.example`.
