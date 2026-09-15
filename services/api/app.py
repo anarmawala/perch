@@ -69,6 +69,10 @@ SPECIES_CONF = float(os.environ.get("SPECIES_CONF", "0.30"))
 CLASSIFIER = os.environ.get("CLASSIFIER", "bioclip")
 CLASSIFY_INTERVAL = float(os.environ.get("CLASSIFY_INTERVAL", "1.0"))    # min secs between classifications per track
 CLASSIFY_LOCK_CONF = float(os.environ.get("CLASSIFY_LOCK_CONF", "0.9"))  # stop re-classifying once a track reaches this conf
+# Carry a locked label to a bird re-detected at the same spot (survives ByteTrack ID churn).
+LABEL_MEMORY_SEC = float(os.environ.get("LABEL_MEMORY_SEC", "8"))
+LABEL_IOU = float(os.environ.get("LABEL_IOU", "0.55"))
+DEDUP_IOU = float(os.environ.get("DEDUP_IOU", "0.6"))  # collapse two ids on one bird into one box
 TRACK_EXPIRE_SEC = float(os.environ.get("TRACK_EXPIRE_SEC", "10"))
 # Motion gating: skip the expensive YOLO pass when the scene is idle (feeder empty
 # and still). Wakes instantly on motion or while a bird is being tracked.
@@ -415,6 +419,18 @@ def make_classifier():
     return clf
 
 
+def _iou(a, b):
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+    if inter <= 0:
+        return 0.0
+    ua = (ax2 - ax1) * (ay2 - ay1) + (bx2 - bx1) * (by2 - by1) - inter
+    return inter / ua if ua > 0 else 0.0
+
+
 def detector():
     """AI thread: run tracking + species classification on the latest frame as
     fast as the hardware allows (paced by DETECT_INTERVAL), updating the boxes
@@ -425,6 +441,7 @@ def detector():
     clf = make_classifier()
     print(f"[detector] {YOLO_MODEL} + {CLASSIFIER} classifier + ByteTrack + visit logging")
     tracks = {}
+    label_memory = []  # [{box, species, best, ts}] — locked labels kept by location, to survive ID churn
     bg = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=32, detectShadows=False)
     motion_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     last_motion = 0.0
@@ -467,11 +484,27 @@ def detector():
         yolo_ms = (time.perf_counter() - td) * 1000
         clf_ms = 0.0
         dets = []
+
+        # De-dup: ByteTrack sometimes assigns two ids to one bird (overlapping YOLO
+        # boxes). Keep, per cluster, the already-labeled / higher-confidence detection
+        # and drop the rest, so one bird draws exactly one box.
+        raw = []
         for b in res.boxes:
             if b.id is None:
                 continue
             tid = int(b.id[0])
-            x1, y1, x2, y2 = map(int, b.xyxy[0])
+            box = list(map(int, b.xyxy[0]))
+            conf = float(b.conf[0]) if b.conf is not None else 0.0
+            raw.append((tid, box, conf))
+        raw.sort(key=lambda r: ((tracks.get(r[0]) or {}).get("best", 0.0), r[2]), reverse=True)
+        kept = []
+        for tid, box, conf in raw:
+            if any(_iou(box, k[1]) > DEDUP_IOU for k in kept):
+                continue
+            kept.append((tid, box, conf))
+
+        for tid, box, conf in kept:
+            x1, y1, x2, y2 = box
 
             t = tracks.get(tid)
             if t is None:
@@ -480,6 +513,15 @@ def detector():
                                    "notified": False, "last_clf": 0.0}
             t["last"] = now
             t["frames"] += 1
+            t["box"] = box
+
+            # A bird re-detected at the same spot (new ByteTrack id) inherits the locked
+            # label instead of re-classifying from scratch — keeps stationary birds stable.
+            if not t["species"]:
+                for m in label_memory:
+                    if now - m["ts"] < LABEL_MEMORY_SEC and _iou(box, m["box"]) > LABEL_IOU:
+                        t["species"], t["best"] = m["species"], m["best"]
+                        break
 
             # Classify only until the track LOCKS a confident species (>=CLASSIFY_LOCK_CONF),
             # throttled per track — so the heavier BioCLIP model runs a few times per new
@@ -512,6 +554,16 @@ def detector():
 
         for tid in [k for k, v in tracks.items() if now - v["last"] > TRACK_EXPIRE_SEC]:
             finalize_track(tid, tracks.pop(tid))
+
+        # Refresh location-keyed label memory: every labeled track keeps its entry fresh,
+        # and a bird that just left lingers as an orphan (until LABEL_MEMORY_SEC) so a bird
+        # re-appearing at that spot can inherit the label.
+        new_mem = [{"box": t["box"], "species": t["species"], "best": t["best"], "ts": now}
+                   for t in tracks.values() if t.get("species") and "box" in t]
+        for m in label_memory:
+            if now - m["ts"] < LABEL_MEMORY_SEC and not any(_iou(m["box"], n["box"]) > LABEL_IOU for n in new_mem):
+                new_mem.append(m)
+        label_memory = new_mem
 
         with state.lock:
             state.detections = dets
