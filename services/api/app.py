@@ -65,6 +65,10 @@ YOLO_MODEL = os.environ.get("YOLO_MODEL", "yolov8s.pt")
 YOLO_IMGSZ = int(os.environ.get("YOLO_IMGSZ", "960"))   # 960>640 finds more small/distant birds
 CONF = float(os.environ.get("YOLO_CONF", "0.15"))       # lower = better recall (verified no false+)
 SPECIES_CONF = float(os.environ.get("SPECIES_CONF", "0.30"))
+# Live species classifier: bioclip (accurate, ~200ms/crop) or inat (fast, ~15ms).
+CLASSIFIER = os.environ.get("CLASSIFIER", "bioclip")
+CLASSIFY_INTERVAL = float(os.environ.get("CLASSIFY_INTERVAL", "1.0"))    # min secs between classifications per track
+CLASSIFY_LOCK_CONF = float(os.environ.get("CLASSIFY_LOCK_CONF", "0.9"))  # stop re-classifying once a track reaches this conf
 TRACK_EXPIRE_SEC = float(os.environ.get("TRACK_EXPIRE_SEC", "10"))
 # Motion gating: skip the expensive YOLO pass when the scene is idle (feeder empty
 # and still). Wakes instantly on motion or while a bird is being tracked.
@@ -399,6 +403,18 @@ def emitter():
                 state.fps = round(fps, 1)
 
 
+def make_classifier():
+    """The live species classifier. BioCLIP is restricted to the local species (so it's
+    a fine-grained 'which of these' decision); iNat uses the geographic prior."""
+    allow = load_allowlist()
+    if CLASSIFIER == "bioclip":
+        from bioclip_classifier import BioCLIPClassifier
+        return BioCLIPClassifier(sorted(allow))
+    clf = BirdClassifier()
+    clf.set_allow(allow)
+    return clf
+
+
 def detector():
     """AI thread: run tracking + species classification on the latest frame as
     fast as the hardware allows (paced by DETECT_INTERVAL), updating the boxes
@@ -406,9 +422,8 @@ def detector():
     less often; the video never stutters."""
     model = YOLO(YOLO_MODEL)
     bird_id = next(i for i, n in model.names.items() if n == "bird")
-    clf = BirdClassifier()
-    clf.set_allow(load_allowlist())        # geographic prior (eBird or fallback)
-    print(f"[detector] {YOLO_MODEL} + ByteTrack + species voting + visit logging")
+    clf = make_classifier()
+    print(f"[detector] {YOLO_MODEL} + {CLASSIFIER} classifier + ByteTrack + visit logging")
     tracks = {}
     bg = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=32, detectShadows=False)
     motion_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -457,29 +472,33 @@ def detector():
                 continue
             tid = int(b.id[0])
             x1, y1, x2, y2 = map(int, b.xyxy[0])
-            pad = 8
-            crop = frame[max(0, y1 - pad):y2 + pad, max(0, x1 - pad):x2 + pad]
-            _tc = time.perf_counter()
-            preds = clf.classify(crop, topk=1)
-            clf_ms += (time.perf_counter() - _tc) * 1000
-            sp, sc = (preds[0][0], preds[0][2]) if preds else ("Bird", 0.0)
 
             t = tracks.get(tid)
             if t is None:
                 t = tracks[tid] = {"first": now, "last": now, "frames": 0,
                                    "best": 0.0, "species": None, "image": None,
-                                   "notified": False}
+                                   "notified": False, "last_clf": 0.0}
             t["last"] = now
             t["frames"] += 1
-            # Sticky label: lock onto the HIGHEST-confidence species seen so far, so it
-            # never reverts to "Bird" or flip-flops between similar species.
-            if sc >= SPECIES_CONF and sc > t["best"]:
-                t["best"] = sc
-                t["species"] = sp
-                if crop.size:  # keep the best-looking thumbnail for this visit
-                    fn = f"{datetime.now():%Y%m%d_%H%M%S}_{sp.replace(' ', '')}_{tid}.jpg"
-                    cv2.imwrite(str(CAPTURES / fn), crop)
-                    t["image"] = fn
+
+            # Classify only until the track LOCKS a confident species (>=CLASSIFY_LOCK_CONF),
+            # throttled per track — so the heavier BioCLIP model runs a few times per new
+            # bird, then stops. Sticky label: keep the highest-confidence species seen.
+            if t["best"] < CLASSIFY_LOCK_CONF and now - t["last_clf"] >= CLASSIFY_INTERVAL:
+                t["last_clf"] = now
+                pad = 8
+                crop = frame[max(0, y1 - pad):y2 + pad, max(0, x1 - pad):x2 + pad]
+                _tc = time.perf_counter()
+                preds = clf.classify(crop, topk=1)
+                clf_ms += (time.perf_counter() - _tc) * 1000
+                sp, sc = (preds[0][0], preds[0][2]) if preds else ("Bird", 0.0)
+                if sc >= SPECIES_CONF and sc > t["best"]:
+                    t["best"] = sc
+                    t["species"] = sp
+                    if crop.size:  # keep the best-looking thumbnail for this visit
+                        fn = f"{datetime.now():%Y%m%d_%H%M%S}_{sp.replace(' ', '')}_{tid}.jpg"
+                        cv2.imwrite(str(CAPTURES / fn), crop)
+                        t["image"] = fn
 
             voted = t["species"] or "Bird"
             vconf = round(t["best"], 2)

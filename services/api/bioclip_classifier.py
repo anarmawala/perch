@@ -16,6 +16,8 @@ import open_clip  # noqa: E402
 import torch  # noqa: E402
 from PIL import Image  # noqa: E402
 
+from classifier import _square_pad  # noqa: E402
+
 MODEL = os.environ.get("BIOCLIP_MODEL", "hf-hub:imageomics/bioclip")
 
 
@@ -35,7 +37,7 @@ class BioCLIPClassifier:
         """Return [(common_name, "", score), ...] best-first (same shape as BirdClassifier)."""
         if bgr_crop is None or bgr_crop.size == 0:
             return []
-        rgb = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2RGB)
+        rgb = cv2.cvtColor(_square_pad(bgr_crop), cv2.COLOR_BGR2RGB)
         x = self.preprocess(Image.fromarray(rgb)).unsqueeze(0)
         feat = self.model.encode_image(x)
         feat = feat / feat.norm(dim=-1, keepdim=True)

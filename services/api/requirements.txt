@@ -21,5 +21,5 @@ fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 requests>=2.31.0
 
-# eval harness only (BioCLIP A/B) — not used by the live pipeline
+# BioCLIP — the live species classifier (fine-grained, restricted to local species)
 open-clip-torch>=2.24.0
