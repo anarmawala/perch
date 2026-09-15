@@ -1,0 +1,25 @@
+# Prototype deps. Use a supported Python (3.10–3.12) — NOT 3.14 (no ML wheels yet).
+# Setup:
+#   uv venv --python 3.10 .venv-ml
+#   uv pip install --python .venv-ml -r requirements.txt
+#
+# SYSTEM DEPENDENCY (not pip): ffmpeg  — used to decode the live HLS stream
+# reliably (OpenCV's HLS reader stalls). macOS: brew install ffmpeg
+# Debian/Ubuntu (NUC): sudo apt install ffmpeg
+
+# stream + capture
+yt-dlp>=2024.1.0
+opencv-python-headless>=4.8.0   # use opencv-python if you want cv2.imshow windows
+numpy>=1.24.0
+
+# detection + tracking
+ultralytics>=8.3.0              # yolov8s; exports to OpenVINO for the Intel NUC
+lapx>=0.5.0                     # linear assignment, required by ByteTrack
+
+# species classification
+ai-edge-litert>=1.0.0           # TFLite runtime for the iNat bird model
+
+# live web app
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+requests>=2.31.0

@@ -1,0 +1,17 @@
+.venv-ml/
+.venv/
+__pycache__/
+*.pyc
+data/
+captures/
+*.log
+birdwatch.db
+prefs.json
+region_species.json
+species_info.json
+fresh*.jpg
+test_frame*.jpg
+live_*.jpg
+yolov8n.pt
+yolov8m.pt
+.DS_Store
