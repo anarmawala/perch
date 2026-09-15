@@ -30,6 +30,16 @@ def common_name(label: str) -> str:
 PRIOR_PENALTY = 0.05
 
 
+def _square_pad(img):
+    """Pad a crop to a square with replicated edge pixels (no stretching)."""
+    h, w = img.shape[:2]
+    if h == w:
+        return img
+    s = max(h, w)
+    top, left = (s - h) // 2, (s - w) // 2
+    return cv2.copyMakeBorder(img, top, s - h - top, left, s - w - left, cv2.BORDER_REPLICATE)
+
+
 class BirdClassifier:
     def __init__(self, model_path=DEFAULT_MODEL, labels_path=DEFAULT_LABELS):
         self.interp = Interpreter(model_path=str(model_path))
@@ -57,8 +67,11 @@ class BirdClassifier:
         """Return [(common_name, full_label, score), ...] best-first."""
         if bgr_crop.size == 0:
             return []
-        img = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, (self.w, self.h))
+        # Square-pad (replicate edges) so the bird isn't stretched to a square, then
+        # resize with cubic interpolation — preserves shape/proportions the model relies on.
+        crop = _square_pad(bgr_crop)
+        img = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (self.w, self.h), interpolation=cv2.INTER_CUBIC)
         x = img.astype(self.inp["dtype"])
         if self.inp["dtype"] == np.float32:
             x = x / 127.5 - 1.0

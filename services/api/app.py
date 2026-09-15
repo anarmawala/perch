@@ -228,7 +228,8 @@ def resolve_stream_url(source: str) -> str:
     if source.startswith("rtsp://") or source.endswith(".m3u8") or Path(source).exists():
         return source
     out = subprocess.run(
-        [sys.executable, "-m", "yt_dlp", "-f", "232/231/230/best", "-g", source],
+        [sys.executable, "-m", "yt_dlp", "-f",
+         f"bestvideo[height<={FRAME_H}]/232/230/best", "-g", source],
         capture_output=True, text=True, check=True,
     )
     urls = [ln for ln in out.stdout.splitlines() if ln.strip()]
@@ -273,7 +274,13 @@ def finalize_track(tid, t):
                  seconds, t["frames"], t["image"] or "")
 
 
-FRAME_W, FRAME_H = 1280, 720
+# Processing resolution. 1080 is the sweet spot (≈4× the pixels on a bird vs 720,
+# still cheap); a close 4K feeder cam gives large, sharp crops even downscaled to this.
+# Bump to 1440/2160 to trade CPU for detail. Detection resizes internally, so this
+# mainly buys sharper classifier crops.
+PROCESS_HEIGHT = int(os.environ.get("PROCESS_HEIGHT", "1080"))
+FRAME_H = PROCESS_HEIGHT
+FRAME_W = (FRAME_H * 16 // 9 + 1) // 2 * 2  # 16:9, even width for bgr24
 
 
 def _start_ffmpeg():
