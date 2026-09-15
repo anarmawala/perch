@@ -76,6 +76,8 @@ CAPTURES = DATA_DIR / "captures"
 CAPTURES.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "birdwatch.db"
 _db_lock = threading.Lock()
+# Auto-delete captured thumbnails older than this many days, unless "kept".
+RETENTION_DAYS = float(os.environ.get("RETENTION_DAYS", "2"))
 
 
 # ---------------------------------------------------------------- database
@@ -84,7 +86,12 @@ def init_db():
     con.execute("""CREATE TABLE IF NOT EXISTS visits(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         species TEXT, species_conf REAL,
-        start_ts TEXT, end_ts TEXT, seconds REAL, frames INTEGER, image TEXT)""")
+        start_ts TEXT, end_ts TEXT, seconds REAL, frames INTEGER, image TEXT,
+        kept INTEGER DEFAULT 0)""")
+    # migrate older DBs that predate the `kept` column
+    cols = {r[1] for r in con.execute("PRAGMA table_info(visits)").fetchall()}
+    if "kept" not in cols:
+        con.execute("ALTER TABLE visits ADD COLUMN kept INTEGER DEFAULT 0")
     con.commit()
     con.close()
 
@@ -184,6 +191,30 @@ def digest_worker():
                 notify.send(f"Today's birds: {total} visits", lines, tags="bird")
             sent_on = now.date()
         time.sleep(60)
+
+
+def cleanup_worker():
+    """Delete captured thumbnails older than RETENTION_DAYS, unless the visit is
+    marked kept. The visit row stays (for history/counts); only the image file is
+    removed and its reference cleared, so disk usage stays bounded."""
+    import datetime as _dt
+    while state.running:
+        cutoff = (datetime.now() - _dt.timedelta(days=RETENTION_DAYS)).isoformat()
+        rows = query("SELECT id, image FROM visits "
+                     "WHERE image != '' AND kept = 0 AND start_ts < ?", (cutoff,))
+        for r in rows:
+            try:
+                (CAPTURES / r["image"]).unlink(missing_ok=True)
+            except Exception:
+                pass
+            with _db_lock:
+                con = sqlite3.connect(DB_PATH)
+                con.execute("UPDATE visits SET image = '' WHERE id = ?", (r["id"],))
+                con.commit()
+                con.close()
+        if rows:
+            print(f"[cleanup] removed {len(rows)} thumbnail(s) older than {RETENTION_DAYS}d")
+        time.sleep(3600)  # hourly
 
 
 # ---------------------------------------------------------------- stream source
@@ -438,6 +469,7 @@ def _start():
     threading.Thread(target=emitter, daemon=True).start()
     threading.Thread(target=detector, daemon=True).start()
     threading.Thread(target=digest_worker, daemon=True).start()
+    threading.Thread(target=cleanup_worker, daemon=True).start()
 
 
 @app.on_event("shutdown")
@@ -486,6 +518,21 @@ def summary():
 @app.get("/visits")
 def visits(limit: int = 50):
     return {"visits": query("SELECT * FROM visits ORDER BY id DESC LIMIT ?", (limit,))}
+
+
+@app.post("/visits/{visit_id}/keep")
+async def keep_visit(visit_id: int, req: Request):
+    """Mark a visit's photo to keep (exempt from retention cleanup), or unkeep it."""
+    try:
+        kept = 1 if (await req.json()).get("kept", True) else 0
+    except Exception:
+        kept = 1
+    with _db_lock:
+        con = sqlite3.connect(DB_PATH)
+        con.execute("UPDATE visits SET kept = ? WHERE id = ?", (kept, visit_id))
+        con.commit()
+        con.close()
+    return {"id": visit_id, "kept": kept}
 
 
 # --- species info cards (Wikipedia photo + facts, cached) ---------------------

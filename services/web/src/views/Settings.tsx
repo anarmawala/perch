@@ -1,11 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import {
-  getNotifyStatus,
-  getPrefs,
-  getSummary,
-  savePrefs,
-  sendTestNotification,
-} from "@/lib/api";
+import { getNotifyStatus, getPrefs, getSummary, savePrefs, sendTestNotification } from "@/lib/api";
 import type { NotifyStatus, Prefs } from "@/lib/types";
 
 export function Settings() {
@@ -15,8 +9,12 @@ export function Settings() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    getPrefs().then(setPrefs).catch(() => {});
-    getNotifyStatus().then(setStatus).catch(() => {});
+    getPrefs()
+      .then(setPrefs)
+      .catch(() => {});
+    getNotifyStatus()
+      .then(setStatus)
+      .catch(() => {});
     getSummary()
       .then((s) => setSeen(s.species.map((r) => r.species)))
       .catch(() => {});
@@ -24,8 +22,7 @@ export function Settings() {
 
   if (!prefs) return <p class="p-8 text-center text-ink-subtle">Loading…</p>;
 
-  const set = <K extends keyof Prefs>(k: K, v: Prefs[K]) =>
-    setPrefs({ ...prefs, [k]: v });
+  const set = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs({ ...prefs, [k]: v });
 
   const speciesText = prefs.species.join(", ");
   const setSpeciesText = (t: string) =>
@@ -58,13 +55,12 @@ export function Settings() {
       >
         {status?.configured ? (
           <>
-            Connected to ntfy topic <b>{status.topic}</b> — alerts go to your
-            phone.
+            Connected to ntfy topic <b>{status.topic}</b> — alerts go to your phone.
           </>
         ) : (
           <>
-            <b>No phone connected yet.</b> Install the <b>ntfy</b> app, subscribe
-            to a topic, and set <code>NTFY_TOPIC</code> on the server.
+            <b>No phone connected yet.</b> Install the <b>ntfy</b> app, subscribe to a topic, and set{" "}
+            <code>NTFY_TOPIC</code> on the server.
           </>
         )}
       </div>
@@ -110,9 +106,7 @@ export function Settings() {
           max={1}
           step={0.05}
           value={prefs.min_conf}
-          onInput={(e) =>
-            set("min_conf", parseFloat((e.target as HTMLInputElement).value))
-          }
+          onInput={(e) => set("min_conf", parseFloat((e.target as HTMLInputElement).value))}
           class="w-full"
         />
       </Card>
@@ -149,15 +143,7 @@ export function Settings() {
   );
 }
 
-function Card({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: preact.ComponentChildren;
-}) {
+function Card({ label, hint, children }: { label: string; hint?: string; children: preact.ComponentChildren }) {
   return (
     <div class="rounded-card border border-line bg-surface p-4 shadow-card">
       <label class="mb-2 block font-semibold">{label}</label>

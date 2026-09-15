@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { captureUrl, getSpecies } from "@/lib/api";
+import { captureUrl, getSpecies, keepVisit } from "@/lib/api";
 import type { SpeciesInfo } from "@/lib/types";
 
 export interface SpeciesTarget {
@@ -7,20 +7,30 @@ export interface SpeciesTarget {
   image?: string; // a specific captured thumbnail (timeline instance)
   ts?: string;
   conf?: number;
+  id?: number; // visit id (timeline instance) — enables "keep"
+  kept?: number;
 }
 
-export function SpeciesModal({
-  target,
-  onClose,
-}: {
-  target: SpeciesTarget;
-  onClose: () => void;
-}) {
+export function SpeciesModal({ target, onClose }: { target: SpeciesTarget; onClose: () => void }) {
   const [info, setInfo] = useState<SpeciesInfo | null>(null);
+  const [kept, setKept] = useState(!!target.kept);
+
+  const toggleKeep = async () => {
+    if (target.id == null) return;
+    const next = !kept;
+    setKept(next);
+    try {
+      await keepVisit(target.id, next);
+    } catch {
+      setKept(!next); // revert on failure
+    }
+  };
 
   useEffect(() => {
     setInfo(null);
-    getSpecies(target.species).then(setInfo).catch(() => setInfo(null));
+    getSpecies(target.species)
+      .then(setInfo)
+      .catch(() => setInfo(null));
   }, [target.species]);
 
   useEffect(() => {
@@ -29,12 +39,9 @@ export function SpeciesModal({
     return () => removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const hero = target.image
-    ? captureUrl(target.image)
-    : info?.thumb || "";
+  const hero = target.image ? captureUrl(target.image) : info?.thumb || "";
   const subtitle = target.ts
-    ? new Date(target.ts).toLocaleString() +
-      (target.conf ? ` · ${Math.round(target.conf * 100)}%` : "")
+    ? new Date(target.ts).toLocaleString() + (target.conf ? ` · ${Math.round(target.conf * 100)}%` : "")
     : info
       ? `Seen ${info.today} today · ${info.total} total`
       : "";
@@ -45,22 +52,12 @@ export function SpeciesModal({
       class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
     >
       <div class="safe-b max-h-[88vh] w-full overflow-y-auto rounded-t-2xl bg-surface shadow-pop sm:max-w-md sm:rounded-card">
-        {hero && (
-          <img
-            src={hero}
-            alt={target.species}
-            class="h-52 w-full object-cover sm:rounded-t-card"
-          />
-        )}
+        {hero && <img src={hero} alt={target.species} class="h-52 w-full object-cover sm:rounded-t-card" />}
         <div class="p-5">
           <div class="flex items-start justify-between gap-3">
             <div>
               <h2 class="text-xl font-semibold">{target.species}</h2>
-              {subtitle && (
-                <p class="mt-0.5 text-sm font-medium text-brand-600">
-                  {subtitle}
-                </p>
-              )}
+              {subtitle && <p class="mt-0.5 text-sm font-medium text-brand-600">{subtitle}</p>}
             </div>
             <button
               onClick={onClose}
@@ -74,6 +71,17 @@ export function SpeciesModal({
           <p class="mt-3 text-sm leading-relaxed text-ink">
             {info ? info.extract || "No description found." : "Loading…"}
           </p>
+
+          {target.id != null && (
+            <button
+              onClick={toggleKeep}
+              class={`mt-4 flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold ${
+                kept ? "border-brand-500 bg-brand-50 text-brand-700" : "border-line text-ink hover:bg-surface-2"
+              }`}
+            >
+              {kept ? "★ Kept — won't be deleted" : "☆ Keep this photo"}
+            </button>
+          )}
 
           {info && (
             <div class="mt-4 flex flex-wrap gap-2">

@@ -1,0 +1,11 @@
+{
+  "name": "perch",
+  "private": true,
+  "description": "Perch — backyard wildlife camera.",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.6"
+  }
+}

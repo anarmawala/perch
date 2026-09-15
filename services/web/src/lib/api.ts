@@ -1,11 +1,4 @@
-import type {
-  DetectionsResponse,
-  NotifyStatus,
-  Prefs,
-  SpeciesInfo,
-  SummaryRow,
-  Visit,
-} from "./types";
+import type { DetectionsResponse, NotifyStatus, Prefs, SpeciesInfo, SummaryRow, Visit } from "./types";
 
 // Everything is same-origin under /api (vite proxy in dev, nginx in prod).
 const BASE = "/api";
@@ -20,12 +13,9 @@ async function get<T>(path: string): Promise<T> {
 }
 
 export const getDetections = () => get<DetectionsResponse>("/detections");
-export const getSummary = () =>
-  get<{ today: string; species: SummaryRow[] }>("/summary");
-export const getVisits = (limit = 500) =>
-  get<{ visits: Visit[] }>(`/visits?limit=${limit}`);
-export const getSpecies = (name: string) =>
-  get<SpeciesInfo>(`/species/${encodeURIComponent(name)}`);
+export const getSummary = () => get<{ today: string; species: SummaryRow[] }>("/summary");
+export const getVisits = (limit = 500) => get<{ visits: Visit[] }>(`/visits?limit=${limit}`);
+export const getSpecies = (name: string) => get<SpeciesInfo>(`/species/${encodeURIComponent(name)}`);
 export const getPrefs = () => get<Prefs>("/prefs");
 export const getNotifyStatus = () => get<NotifyStatus>("/notify-status");
 
@@ -44,5 +34,14 @@ export async function sendTestNotification(): Promise<{
   configured: boolean;
 }> {
   const r = await fetch(`${BASE}/notify-test`, { method: "POST" });
+  return r.json();
+}
+
+export async function keepVisit(id: number, kept: boolean): Promise<{ id: number; kept: number }> {
+  const r = await fetch(`${BASE}/visits/${id}/keep`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kept }),
+  });
   return r.json();
 }

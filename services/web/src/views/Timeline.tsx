@@ -4,11 +4,7 @@ import { usePoll } from "@/lib/hooks";
 import type { SpeciesTarget } from "@/components/SpeciesModal";
 import type { Visit } from "@/lib/types";
 
-export function Timeline({
-  openSpecies,
-}: {
-  openSpecies: (name: string, extra?: Partial<SpeciesTarget>) => void;
-}) {
+export function Timeline({ openSpecies }: { openSpecies: (name: string, extra?: Partial<SpeciesTarget>) => void }) {
   const data = usePoll(() => getVisits(500), 5000);
   const [open, setOpen] = useState<Set<string>>(new Set());
 
@@ -26,15 +22,15 @@ export function Timeline({
   const toggle = (sp: string) =>
     setOpen((prev) => {
       const next = new Set(prev);
-      next.has(sp) ? next.delete(sp) : next.add(sp);
+      if (next.has(sp)) next.delete(sp);
+      else next.add(sp);
       return next;
     });
 
   if (data && groups.length === 0) {
     return (
       <p class="p-8 text-center italic text-ink-subtle">
-        No visits logged yet. Leave the live view running — birds appear here as
-        they come and go.
+        No visits logged yet. Leave the live view running — birds appear here as they come and go.
       </p>
     );
   }
@@ -45,14 +41,8 @@ export function Timeline({
         const isOpen = open.has(species);
         const rep = items.find((v) => v.image) ?? items[0];
         return (
-          <section
-            key={species}
-            class="overflow-hidden rounded-card border border-line bg-surface shadow-card"
-          >
-            <button
-              onClick={() => toggle(species)}
-              class="flex w-full items-center gap-3 px-4 py-3 text-left"
-            >
+          <section key={species} class="overflow-hidden rounded-card border border-line bg-surface shadow-card">
+            <button onClick={() => toggle(species)} class="flex w-full items-center gap-3 px-4 py-3 text-left">
               {rep.image ? (
                 <img
                   src={captureUrl(rep.image)}
@@ -67,13 +57,7 @@ export function Timeline({
               <span class="rounded-full bg-brand-50 px-2.5 py-0.5 text-sm font-semibold text-brand-700">
                 {items.length}
               </span>
-              <span
-                class={`text-ink-subtle transition-transform ${
-                  isOpen ? "rotate-90" : ""
-                }`}
-              >
-                ▸
-              </span>
+              <span class={`text-ink-subtle transition-transform ${isOpen ? "rotate-90" : ""}`}>▸</span>
             </button>
 
             {isOpen && (
@@ -86,6 +70,8 @@ export function Timeline({
                         image: v.image,
                         ts: v.start_ts,
                         conf: v.species_conf,
+                        id: v.id,
+                        kept: v.kept,
                       })
                     }
                     class="overflow-hidden rounded-lg border border-line bg-surface text-left hover:border-brand-500"

@@ -1,0 +1,1 @@
+cd services/web && npx lint-staged

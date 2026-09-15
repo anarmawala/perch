@@ -47,9 +47,7 @@ export function VideoStage({ showBoxes, showStats, onPickSpecies }: Props) {
         ctx.strokeStyle = BOX;
         ctx.strokeRect(bx, by, bw, bh);
 
-        const label = d.species_conf
-          ? `${d.species} ${Math.round(d.species_conf * 100)}%`
-          : d.species;
+        const label = d.species_conf ? `${d.species} ${Math.round(d.species_conf * 100)}%` : d.species;
         ctx.font = "600 13px system-ui, sans-serif";
         const tw = ctx.measureText(label).width;
         const ly = Math.max(0, by - 20);
@@ -64,7 +62,8 @@ export function VideoStage({ showBoxes, showStats, onPickSpecies }: Props) {
     const ro = new ResizeObserver(draw);
     ro.observe(img);
     return () => ro.disconnect();
-  }, [showBoxes, detections]);
+    // redraw whenever the toggle flips or fresh detections arrive (via `data`)
+  }, [showBoxes, data]);
 
   const onClick = (e: MouseEvent) => {
     const canvas = canvasRef.current;
@@ -85,12 +84,7 @@ export function VideoStage({ showBoxes, showStats, onPickSpecies }: Props) {
 
   return (
     <div class="relative aspect-video w-full overflow-hidden rounded-card bg-black shadow-card">
-      <img
-        ref={imgRef}
-        src={streamUrl}
-        alt="Live feeder"
-        class="h-full w-full object-cover"
-      />
+      <img ref={imgRef} src={streamUrl} alt="Live feeder" class="h-full w-full object-cover" />
       <canvas
         ref={canvasRef}
         onClick={onClick}

@@ -27,6 +27,7 @@ export interface Visit {
   seconds: number;
   frames: number;
   image: string;
+  kept: number;
 }
 
 export interface SpeciesInfo {

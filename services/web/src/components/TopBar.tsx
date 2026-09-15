@@ -6,13 +6,7 @@ const TABS: [Route, string][] = [
   ["settings", "Settings"],
 ];
 
-export function TopBar({
-  route,
-  navigate,
-}: {
-  route: Route;
-  navigate: (r: Route) => void;
-}) {
+export function TopBar({ route, navigate }: { route: Route; navigate: (r: Route) => void }) {
   return (
     <header class="safe-t sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-surface/90 px-4 py-2.5 backdrop-blur">
       <span class="flex items-center gap-2 font-semibold tracking-tight">
@@ -25,9 +19,7 @@ export function TopBar({
             key={id}
             onClick={() => navigate(id)}
             class={`rounded-full px-3 py-1 transition-colors ${
-              route === id
-                ? "bg-surface text-ink shadow-card"
-                : "text-ink-muted hover:text-ink"
+              route === id ? "bg-surface text-ink shadow-card" : "text-ink-muted hover:text-ink"
             }`}
           >
             {label}

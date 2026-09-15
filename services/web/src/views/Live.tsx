@@ -2,11 +2,7 @@ import { useState } from "preact/hooks";
 import { VideoStage } from "@/components/VideoStage";
 import { XRayPanel } from "@/components/XRayPanel";
 
-export function Live({
-  openSpecies,
-}: {
-  openSpecies: (name: string) => void;
-}) {
+export function Live({ openSpecies }: { openSpecies: (name: string) => void }) {
   const [boxes, setBoxes] = useState(true);
   const [stats, setStats] = useState(true);
   const [panel, setPanel] = useState(false);
@@ -16,11 +12,7 @@ export function Live({
       {/* Video is the hero — fills available space, centered, capped to fit height */}
       <div class="flex min-h-0 flex-1 items-center justify-center">
         <div class="w-full max-w-[calc((100vh-11rem)*16/9)]">
-          <VideoStage
-            showBoxes={boxes}
-            showStats={stats}
-            onPickSpecies={openSpecies}
-          />
+          <VideoStage showBoxes={boxes} showStats={stats} onPickSpecies={openSpecies} />
         </div>
       </div>
 

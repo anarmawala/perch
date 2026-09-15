@@ -25,11 +25,7 @@ export function XRayPanel({ open, onClose, onPickSpecies }: Props) {
         class={`safe-b fixed z-40 flex flex-col overflow-hidden bg-surface shadow-pop transition-transform duration-300 ease-out
           inset-x-0 bottom-0 max-h-[78vh] rounded-t-2xl
           sm:inset-y-0 sm:left-auto sm:right-0 sm:max-h-none sm:w-[380px] sm:rounded-none
-          ${
-            open
-              ? "translate-y-0 sm:translate-x-0"
-              : "translate-y-full sm:translate-y-0 sm:translate-x-full"
-          }`}
+          ${open ? "translate-y-0 sm:translate-x-0" : "translate-y-full sm:translate-y-0 sm:translate-x-full"}`}
       >
         <header class="flex items-center justify-between border-b border-line px-5 py-3">
           <h2 class="font-semibold">X-Ray</h2>
@@ -52,11 +48,7 @@ export function XRayPanel({ open, onClose, onPickSpecies }: Props) {
                 <li key={d.id}>
                   <Row
                     label={d.species}
-                    right={
-                      d.species_conf
-                        ? `${Math.round(d.species_conf * 100)}%`
-                        : ""
-                    }
+                    right={d.species_conf ? `${Math.round(d.species_conf * 100)}%` : ""}
                     onClick={() => onPickSpecies(d.species)}
                   />
                 </li>
@@ -71,11 +63,7 @@ export function XRayPanel({ open, onClose, onPickSpecies }: Props) {
             <ul class="space-y-2">
               {today.map((r) => (
                 <li key={r.species}>
-                  <Row
-                    label={r.species}
-                    right={`${r.n}`}
-                    onClick={() => onPickSpecies(r.species)}
-                  />
+                  <Row label={r.species} right={`${r.n}`} onClick={() => onPickSpecies(r.species)} />
                 </li>
               ))}
             </ul>
@@ -86,31 +74,11 @@ export function XRayPanel({ open, onClose, onPickSpecies }: Props) {
   );
 }
 
-function SectionLabel({
-  children,
-  class: cls = "",
-}: {
-  children: preact.ComponentChildren;
-  class?: string;
-}) {
-  return (
-    <h3
-      class={`mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle ${cls}`}
-    >
-      {children}
-    </h3>
-  );
+function SectionLabel({ children, class: cls = "" }: { children: preact.ComponentChildren; class?: string }) {
+  return <h3 class={`mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle ${cls}`}>{children}</h3>;
 }
 
-function Row({
-  label,
-  right,
-  onClick,
-}: {
-  label: string;
-  right: string;
-  onClick: () => void;
-}) {
+function Row({ label, right, onClick }: { label: string; right: string; onClick: () => void }) {
   const known = label !== "Bird";
   return (
     <button
