@@ -69,7 +69,7 @@ TRACK_EXPIRE_SEC = float(os.environ.get("TRACK_EXPIRE_SEC", "10"))
 # Motion gating: skip the expensive YOLO pass when the scene is idle (feeder empty
 # and still). Wakes instantly on motion or while a bird is being tracked.
 MOTION_GATING = os.environ.get("MOTION_GATING", "1").lower() not in ("0", "false", "no", "")
-MOTION_MIN_AREA = int(os.environ.get("MOTION_MIN_AREA", "80"))  # fg pixels (in 320x180) that count as motion
+MOTION_MIN_AREA = int(os.environ.get("MOTION_MIN_AREA", "150"))  # largest moving blob (px, in 320x180) = motion
 MOTION_IDLE_SEC = float(os.environ.get("MOTION_IDLE_SEC", "3"))  # keep detecting this long after last motion
 IDLE_POLL = float(os.environ.get("IDLE_POLL", "0.12"))          # motion-check cadence while idle
 URL_REFRESH_SEC = 1200.0                                        # re-resolve URL proactively (~20 min)
@@ -401,6 +401,7 @@ def detector():
     print(f"[detector] {YOLO_MODEL} + ByteTrack + species voting + visit logging")
     tracks = {}
     bg = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=32, detectShadows=False)
+    motion_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     last_motion = 0.0
 
     while state.running:
@@ -412,9 +413,14 @@ def detector():
         frame = lf.copy()
         now = time.time()
 
-        # Cheap motion check (also keeps the background model fresh) — every cycle.
+        # Motion check (keeps the bg model fresh). Gate on the LARGEST coherent blob,
+        # not total pixels — a bird is one object; wind-blown foliage and the burned-in
+        # timestamp overlay are diffuse speckle we mask/filter out.
         fg = bg.apply(cv2.resize(frame, (320, 180)))
-        motion_area = int(cv2.countNonZero(fg))
+        fg[:34, :110] = 0  # mask the top-left weather/clock overlay (changes every second)
+        fg = cv2.morphologyEx(fg, cv2.MORPH_OPEN, motion_kernel)
+        cnts, _ = cv2.findContours(fg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        motion_area = int(max((cv2.contourArea(c) for c in cnts), default=0))
         if motion_area > MOTION_MIN_AREA:
             last_motion = now
 
