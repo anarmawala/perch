@@ -28,7 +28,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from collections import Counter, defaultdict, deque
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -241,8 +241,9 @@ def resolve_stream_url(source: str) -> str:
 class State:
     def __init__(self):
         self.lock = threading.Lock()
-        self.latest_frame = None          # newest full-res frame for the detector
-        self.frames = deque(maxlen=max(2, int(30 * BUFFER_SECONDS)))  # display jitter buffer
+        self.latest_frame = None          # newest full-res frame (live edge)
+        self.detect_frame = None          # the frame currently being displayed (detector uses this)
+        self.frames = deque(maxlen=max(2, int(30 * BUFFER_SECONDS)))  # full-res jitter buffer
         self.jpeg: bytes | None = None     # newest annotated JPEG for streaming
         self.last_frame_ts = 0.0           # wall-clock of the last decoded frame (watchdog)
         self.proc = None                   # current ffmpeg process (so the watchdog can kill it)
@@ -261,13 +262,11 @@ state = State()
 # ---------------------------------------------------------------- worker thread
 def finalize_track(tid, t):
     """A tracked bird has left -> record the visit if it was a real one."""
-    if not t["votes"]:
-        return  # never got a confident species; skip noise
-    species = t["votes"].most_common(1)[0][0]
-    conf = round(t["conf"][species], 2)
+    if not t.get("species") or t["frames"] < 2:
+        return  # never confidently identified, or too brief -> skip noise
+    species = t["species"]
+    conf = round(t["best"], 2)
     seconds = round(t["last"] - t["first"], 1)
-    if t["frames"] < 2:
-        return
     insert_visit(species, conf,
                  datetime.fromtimestamp(t["first"]).isoformat(timespec="seconds"),
                  datetime.fromtimestamp(t["last"]).isoformat(timespec="seconds"),
@@ -326,10 +325,9 @@ def reader():
             continue
 
         frame = np.frombuffer(raw, np.uint8).reshape(FRAME_H, FRAME_W, 3)
-        small = cv2.resize(frame, (STREAM_MAX_W, DISPLAY_H))
         with state.lock:
-            state.latest_frame = frame          # full-res for the detector
-            state.frames.append(small)          # downscaled for the display buffer
+            state.latest_frame = frame          # live edge (for the watchdog / reference)
+            state.frames.append(frame)          # full-res jitter buffer
             state.last_frame_ts = time.time()
 
     proc.kill()
@@ -369,20 +367,25 @@ def emitter():
             next_t = time.time()             # fell behind; resync
 
         with state.lock:
-            small = state.frames.popleft() if state.frames else last_disp
-        if small is None:
+            full = state.frames.popleft() if state.frames else last_disp
+        if full is None:
             continue
-        last_disp = small
+        last_disp = full
+        # The detector runs on exactly the frame we're about to show, so the client
+        # overlay is WYSIWYG — boxes match the visible video, not the live edge.
+        with state.lock:
+            state.detect_frame = full
 
-        # Serve a CLEAN frame — the web client draws boxes/labels itself as a
-        # canvas overlay (toggleable), from the normalized /detections data.
+        # Serve a CLEAN downscaled frame — the web client draws boxes/labels itself
+        # as a canvas overlay (toggleable), from the normalized /detections data.
+        disp = cv2.resize(full, (STREAM_MAX_W, DISPLAY_H))
         now = time.time()
         if last_emit:
             etimes.append(now - last_emit)
         last_emit = now
         fps = len(etimes) / sum(etimes) if etimes else 0.0
 
-        ok, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 78])
+        ok, buf = cv2.imencode(".jpg", disp, [cv2.IMWRITE_JPEG_QUALITY, 78])
         if ok:
             with state.lock:
                 state.jpeg = buf.tobytes()
@@ -407,7 +410,7 @@ def detector():
     while state.running:
         cycle_start = time.time()
         with state.lock:
-            lf = state.latest_frame
+            lf = state.detect_frame          # the frame currently on screen (WYSIWYG)
         if lf is None:
             time.sleep(0.05); continue
         frame = lf.copy()
@@ -456,25 +459,23 @@ def detector():
 
             t = tracks.get(tid)
             if t is None:
-                t = tracks[tid] = {"votes": Counter(), "conf": defaultdict(float),
-                                   "first": now, "last": now, "frames": 0,
-                                   "best": 0.0, "image": None, "notified": False}
+                t = tracks[tid] = {"first": now, "last": now, "frames": 0,
+                                   "best": 0.0, "species": None, "image": None,
+                                   "notified": False}
             t["last"] = now
             t["frames"] += 1
-            if sc >= SPECIES_CONF:
-                t["votes"][sp] += 1
-                t["conf"][sp] = max(t["conf"][sp], sc)
-                if sc > t["best"] and crop.size:  # save best thumbnail for this visit
-                    t["best"] = sc
+            # Sticky label: lock onto the HIGHEST-confidence species seen so far, so it
+            # never reverts to "Bird" or flip-flops between similar species.
+            if sc >= SPECIES_CONF and sc > t["best"]:
+                t["best"] = sc
+                t["species"] = sp
+                if crop.size:  # keep the best-looking thumbnail for this visit
                     fn = f"{datetime.now():%Y%m%d_%H%M%S}_{sp.replace(' ', '')}_{tid}.jpg"
                     cv2.imwrite(str(CAPTURES / fn), crop)
                     t["image"] = fn
 
-            if t["votes"]:
-                voted = t["votes"].most_common(1)[0][0]
-                vconf = round(t["conf"][voted], 2)
-            else:
-                voted, vconf = "Bird", 0.0
+            voted = t["species"] or "Bird"
+            vconf = round(t["best"], 2)
             dets.append({"id": tid, "box": [x1, y1, x2, y2],
                          "species": voted, "species_conf": vconf})
 
