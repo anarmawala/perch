@@ -457,7 +457,7 @@ def detector():
 
 
 # ---------------------------------------------------------------- web app
-app = FastAPI(title="bird_watch X-Ray prototype")
+app = FastAPI(title="Perch API")
 app.mount("/captures", StaticFiles(directory=str(CAPTURES)), name="captures")
 
 

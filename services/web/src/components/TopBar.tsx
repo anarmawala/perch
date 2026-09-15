@@ -11,7 +11,7 @@ export function TopBar({ route, navigate }: { route: Route; navigate: (r: Route)
     <header class="safe-t sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-surface/90 px-4 py-2.5 backdrop-blur">
       <span class="flex items-center gap-2 font-semibold tracking-tight">
         <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-live" />
-        Bird&nbsp;Watch
+        Perch
       </span>
       <nav class="ml-auto flex gap-1 rounded-full bg-surface-2 p-1 text-sm font-medium">
         {TABS.map(([id, label]) => (
