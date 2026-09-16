@@ -90,6 +90,7 @@ MOTION_GATING = os.environ.get("MOTION_GATING", "1").lower() not in ("0", "false
 MOTION_MIN_AREA = int(os.environ.get("MOTION_MIN_AREA", "150"))  # largest moving blob (px, in 320x180) = motion
 MOTION_IDLE_SEC = float(os.environ.get("MOTION_IDLE_SEC", "3"))  # keep detecting this long after last motion
 IDLE_POLL = float(os.environ.get("IDLE_POLL", "0.12"))          # motion-check cadence while idle
+IDLE_SCAN_SEC = float(os.environ.get("IDLE_SCAN_SEC", "6"))     # run a full detection this often even when idle (catches still, non-moving birds motion gating would miss)
 URL_REFRESH_SEC = 1200.0                                        # re-resolve URL proactively (~20 min)
 STALL_SEC = float(os.environ.get("STALL_SEC", "20"))           # kill+restart ffmpeg if no frame for this long
 
@@ -455,6 +456,7 @@ def detector():
     bg = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=32, detectShadows=False)
     motion_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     last_motion = 0.0
+    last_scan = 0.0  # last full YOLO pass (for the idle heartbeat)
 
     while state.running:
         cycle_start = time.time()
@@ -478,7 +480,10 @@ def detector():
 
         # Idle: gating on, nothing tracked, no recent motion -> skip the expensive
         # YOLO pass and poll cheaply. Wakes instantly on motion or a lingering track.
-        if MOTION_GATING and not tracks and (now - last_motion) > MOTION_IDLE_SEC:
+        # But run a periodic heartbeat scan (every IDLE_SCAN_SEC) so a bird that lands
+        # and sits perfectly still — never tripping the motion gate — still gets found.
+        motion_idle = MOTION_GATING and not tracks and (now - last_motion) > MOTION_IDLE_SEC
+        if motion_idle and (now - last_scan) < IDLE_SCAN_SEC:
             with state.lock:
                 state.detections = []
                 state.detect_ms = 0.0
@@ -488,6 +493,7 @@ def detector():
             time.sleep(IDLE_POLL)
             continue
 
+        last_scan = now
         td = time.perf_counter()
         res = model.track(frame, imgsz=YOLO_IMGSZ, classes=[bird_id], conf=CONF,
                           persist=True, tracker="bytetrack.yaml", verbose=False)[0]
@@ -580,7 +586,8 @@ def detector():
             state.detect_ms = round(yolo_ms, 1)
             state.classify_ms = round(clf_ms, 1)
             state.motion_area = motion_area
-            state.idle = False
+            # A heartbeat scan that found nothing is still "idle"; anything tracked isn't.
+            state.idle = not dets and not tracks
 
         dt = time.time() - cycle_start          # pace so we don't peg the CPU
         if dt < DETECT_INTERVAL:
