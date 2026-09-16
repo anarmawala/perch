@@ -36,6 +36,14 @@ environments = ["sys_platform == 'linux'"]
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
 
+# Pin the default index to public PyPI so the lock is reproducible regardless of a
+# machine's ambient UV_DEFAULT_INDEX (e.g. a corporate mirror), which the NUC can't
+# reach reliably.
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
+
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
