@@ -65,6 +65,37 @@ export function VideoStage({ showBoxes, showStats, onPickSpecies }: Props) {
     // redraw whenever the toggle flips or fresh detections arrive (via `data`)
   }, [showBoxes, data]);
 
+  // Keep the MJPEG stream alive across tab-backgrounding / phone-sleep / blips.
+  // The browser suspends the <img> connection when hidden and never re-opens it,
+  // leaving a black frame until a manual refresh. So: reconnect (cache-busted) when
+  // the page becomes visible, drop the connection while hidden, and retry on error.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const connect = () => {
+      img.src = `${streamUrl}${streamUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") connect();
+      else img.removeAttribute("src"); // free the connection while backgrounded
+    };
+    const onError = () => {
+      if (document.visibilityState !== "visible") return;
+      clearTimeout(retry);
+      retry = setTimeout(connect, 2000);
+    };
+    img.addEventListener("error", onError);
+    document.addEventListener("visibilitychange", onVisibility);
+    addEventListener("pageshow", onVisibility); // iOS/PWA bfcache restore
+    return () => {
+      clearTimeout(retry);
+      img.removeEventListener("error", onError);
+      document.removeEventListener("visibilitychange", onVisibility);
+      removeEventListener("pageshow", onVisibility);
+    };
+  }, []);
+
   const onClick = (e: MouseEvent) => {
     const canvas = canvasRef.current;
     if (!canvas || !showBoxes) return;
