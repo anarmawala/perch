@@ -587,6 +587,31 @@ wheels = [
 ]
 
 [[package]]
+name = "openvino"
+version = "2026.3.1"
+source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple/" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple/" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.3", source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple/" }, marker = "python_full_version >= '3.12'" },
+    { name = "openvino-telemetry" },
+]
+wheels = [
+    { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/openvino/2026.3.1/openvino-2026.3.1-22476-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:a767aab95940ce78901335f5e89e61087b81ce122a546e3023489303f8488cd3" },
+    { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/openvino/2026.3.1/openvino-2026.3.1-22476-cp311-cp311-manylinux_2_35_aarch64.whl", hash = "sha256:5daa3bba15a1e253f138381087cb51f81f72015ca7d37319c669342c0394a968" },
+    { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/openvino/2026.3.1/openvino-2026.3.1-22476-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:40bf3724ec70bce0fce4f9547cd1f19a576ef299172ce4ce2552249d10064acc" },
+    { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/openvino/2026.3.1/openvino-2026.3.1-22476-cp312-cp312-manylinux_2_35_aarch64.whl", hash = "sha256:e6b78918aef61ee4650bd6bbd6b17e5b8cd90f55f145adff5d7f6def907f33be" },
+]
+
+[[package]]
+name = "openvino-telemetry"
+version = "2025.2.0"
+source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple/" }
+sdist = { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/openvino-telemetry/2025.2/openvino_telemetry-2025.2.0.tar.gz", hash = "sha256:8bf8127218e51e99547bf38b8fb85a8b31c9bf96e6f3a82eb0b3b6a34155977c" }
+wheels = [
+    { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/openvino-telemetry/2025.2/openvino_telemetry-2025.2.0-py3-none-any.whl", hash = "sha256:bcb667e83a44f202ecf4cfa49281715c6d7e21499daec04ff853b7f964833599" },
+]
+
+[[package]]
 name = "packaging"
 version = "26.3"
 source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple/" }
@@ -607,6 +632,7 @@ dependencies = [
     { name = "numpy", version = "2.5.3", source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple/" }, marker = "python_full_version >= '3.12'" },
     { name = "open-clip-torch" },
     { name = "opencv-python-headless" },
+    { name = "openvino" },
     { name = "requests" },
     { name = "torch" },
     { name = "torchvision" },
@@ -623,6 +649,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "open-clip-torch", specifier = ">=2.24.0" },
     { name = "opencv-python-headless", specifier = ">=4.8.0" },
+    { name = "openvino", specifier = ">=2024.3" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "torch", specifier = ">=2.2.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torchvision", specifier = ">=0.17.0", index = "https://download.pytorch.org/whl/cpu" },

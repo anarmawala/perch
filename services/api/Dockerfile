@@ -22,9 +22,10 @@ RUN uv sync --frozen --no-cache
 
 COPY . .
 
-# Bake in the detector weights (downloads if not already in the build context)
-# so the first run needs no network and starts instantly.
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8s.pt')"
+# Bake in the detector weights and export to OpenVINO (Intel CPU runtime, 2-3x
+# faster than torch on the NUC). Export at the inference size so shapes match.
+# Produces /app/yolov8s_openvino_model/, which the detector prefers at runtime.
+RUN python -c "from ultralytics import YOLO; YOLO('yolov8s.pt').export(format='openvino', imgsz=960)"
 
 # Persistent state (db, photos, prefs) lives here — mounted as a volume.
 ENV DATA_DIR=/app/data \

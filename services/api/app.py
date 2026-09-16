@@ -61,7 +61,17 @@ DETECT_INTERVAL = float(os.environ.get("DETECT_INTERVAL", "0.3"))  # secs betwee
 EMIT_FPS = float(os.environ.get("EMIT_FPS", "20"))                 # steady playout frame rate
 STREAM_MAX_W = int(os.environ.get("STREAM_MAX_W", "960"))          # display/buffer width
 BUFFER_SECONDS = float(os.environ.get("BUFFER_SECONDS", "2.5"))    # jitter buffer depth (live HLS is bursty)
-YOLO_MODEL = os.environ.get("YOLO_MODEL", "yolov8s.pt")
+def _resolve_yolo_model():
+    """Prefer the baked OpenVINO model (Intel CPU, ~2-3x faster than torch) when
+    present; fall back to the .pt weights. An explicit YOLO_MODEL env always wins."""
+    explicit = os.environ.get("YOLO_MODEL")
+    if explicit:
+        return explicit
+    ov = _HERE / "yolov8s_openvino_model"
+    return str(ov) if ov.exists() else "yolov8s.pt"
+
+
+YOLO_MODEL = _resolve_yolo_model()
 YOLO_IMGSZ = int(os.environ.get("YOLO_IMGSZ", "960"))   # 960>640 finds more small/distant birds
 CONF = float(os.environ.get("YOLO_CONF", "0.15"))       # lower = better recall (verified no false+)
 SPECIES_CONF = float(os.environ.get("SPECIES_CONF", "0.30"))

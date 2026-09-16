@@ -10,7 +10,8 @@ dependencies = [
     "opencv-python-headless>=4.8.0",  # use opencv-python for cv2.imshow windows
     "numpy>=1.24.0",
     # detection + tracking
-    "ultralytics>=8.3.0",             # yolov8s; exportable to OpenVINO for Intel CPUs
+    "ultralytics>=8.3.0",             # yolov8s; exported to OpenVINO for the Intel NUC
+    "openvino>=2024.3",              # Intel CPU inference runtime (2-3x faster than torch CPU)
     "lapx>=0.5.0",                    # linear assignment, required by ByteTrack
     # species classification
     "ai-edge-litert>=1.0.0",         # TFLite runtime for the iNat bird model (eval baseline)

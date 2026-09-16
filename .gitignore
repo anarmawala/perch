@@ -444,3 +444,6 @@ feedcheck.jpg
 _det.jpg
 ghost.jpg
 
+
+# OpenVINO export (built inside the image)
+services/api/yolov8s_openvino_model/
