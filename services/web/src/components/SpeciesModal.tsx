@@ -14,6 +14,7 @@ export interface SpeciesTarget {
 export function SpeciesModal({ target, onClose }: { target: SpeciesTarget; onClose: () => void }) {
   const [info, setInfo] = useState<SpeciesInfo | null>(null);
   const [kept, setKept] = useState(!!target.kept);
+  const [zoom, setZoom] = useState(false);
 
   const toggleKeep = async () => {
     if (target.id == null) return;
@@ -34,12 +35,16 @@ export function SpeciesModal({ target, onClose }: { target: SpeciesTarget; onClo
   }, [target.species]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (zoom) setZoom(false);
+      else onClose();
+    };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, zoom]);
 
-  const hero = target.image ? captureUrl(target.image) : info?.thumb || "";
+  const captured = target.image ? captureUrl(target.image) : "";
   const subtitle = target.ts
     ? new Date(target.ts).toLocaleString() + (target.conf ? ` · ${Math.round(target.conf * 100)}%` : "")
     : info
@@ -51,8 +56,18 @@ export function SpeciesModal({ target, onClose }: { target: SpeciesTarget; onClo
       onClick={(e) => e.target === e.currentTarget && onClose()}
       class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
     >
-      <div class="safe-b max-h-[88vh] w-full overflow-y-auto rounded-t-2xl bg-surface shadow-pop sm:max-w-md sm:rounded-card">
-        {hero && <img src={hero} alt={target.species} class="h-52 w-full object-cover sm:rounded-t-card" />}
+      <div class="safe-b max-h-[90vh] w-full overflow-y-auto rounded-t-2xl bg-surface shadow-pop sm:max-w-lg sm:rounded-card">
+        {/* The captured shot of this bird — shown whole (never cropped); tap to zoom. */}
+        {captured && (
+          <button
+            onClick={() => setZoom(true)}
+            class="flex w-full justify-center bg-ink/90 sm:rounded-t-card"
+            aria-label="View full size"
+          >
+            <img src={captured} alt={target.species} class="max-h-[60vh] w-full object-contain" />
+          </button>
+        )}
+
         <div class="p-5">
           <div class="flex items-start justify-between gap-3">
             <div>
@@ -68,10 +83,6 @@ export function SpeciesModal({ target, onClose }: { target: SpeciesTarget; onClo
             </button>
           </div>
 
-          <p class="mt-3 text-sm leading-relaxed text-ink">
-            {info ? info.extract || "No description found." : "Loading…"}
-          </p>
-
           {target.id != null && (
             <button
               onClick={toggleKeep}
@@ -83,32 +94,28 @@ export function SpeciesModal({ target, onClose }: { target: SpeciesTarget; onClo
             </button>
           )}
 
-          {info && (
-            <div class="mt-4 flex flex-wrap gap-2">
-              {info.aab_url && (
-                <a
-                  href={info.aab_url}
-                  target="_blank"
-                  rel="noopener"
-                  class="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
-                >
-                  Field guide →
-                </a>
-              )}
-              {info.url && (
-                <a
-                  href={info.url}
-                  target="_blank"
-                  rel="noopener"
-                  class="rounded-lg border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-surface-2"
-                >
-                  Wikipedia →
-                </a>
-              )}
-            </div>
+          {info?.aab_url && (
+            <a
+              href={info.aab_url}
+              target="_blank"
+              rel="noopener"
+              class="mt-3 inline-block text-sm font-semibold text-brand-600 hover:text-brand-700"
+            >
+              Field guide →
+            </a>
           )}
         </div>
       </div>
+
+      {/* Full-size view of the captured photo. */}
+      {zoom && captured && (
+        <div
+          onClick={() => setZoom(false)}
+          class="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+        >
+          <img src={captured} alt={target.species} class="max-h-[95vh] max-w-full object-contain" />
+        </div>
+      )}
     </div>
   );
 }

@@ -664,37 +664,7 @@ async def keep_visit(visit_id: int, req: Request):
     return {"id": visit_id, "kept": kept}
 
 
-# --- species info cards (Wikipedia photo + facts, cached) ---------------------
-_SPECIES_CACHE = DATA_DIR / "species_info.json"
-try:
-    _species_info = json.loads(_SPECIES_CACHE.read_text())
-except Exception:
-    _species_info = {}
-
-
-def wiki_summary(name: str) -> dict:
-    if name in _species_info:
-        return _species_info[name]
-    info = {"extract": "", "thumb": "", "url": ""}
-    try:
-        title = urllib.parse.quote(name.replace(" ", "_"))
-        req = urllib.request.Request(
-            f"https://en.wikipedia.org/api/rest_v1/page/summary/{title}",
-            headers={"User-Agent": "bird_watch/0.1 (personal project)"})
-        data = json.loads(urllib.request.urlopen(req, timeout=10).read())
-        info["extract"] = data.get("extract", "")
-        info["thumb"] = data.get("thumbnail", {}).get("source", "")
-        info["url"] = data.get("content_urls", {}).get("desktop", {}).get("page", "")
-    except Exception as e:
-        print("[wiki] lookup failed for", name, e)
-    _species_info[name] = info
-    try:
-        _SPECIES_CACHE.write_text(json.dumps(_species_info))
-    except Exception:
-        pass
-    return info
-
-
+# --- species info (visit stats + a field-guide link) --------------------------
 @app.get("/species/{name}")
 def species(name: str):
     today = datetime.now().strftime("%Y-%m-%d")
@@ -702,11 +672,11 @@ def species(name: str):
     tod = query("SELECT COUNT(*) n FROM visits WHERE species=? AND start_ts LIKE ?",
                 (name, today + "%"))[0]["n"]
     last = query("SELECT start_ts FROM visits WHERE species=? ORDER BY id DESC LIMIT 1", (name,))
-    # All About Birds (Cornell, free) — richer bird-specific page than Wikipedia.
+    # All About Birds (Cornell, free) — opened in a new tab (the site blocks embedding).
     slug = name.replace("'", "").replace(" ", "_")
     aab_url = f"https://www.allaboutbirds.org/guide/{slug}"
     return {"name": name, "total": total, "today": tod, "aab_url": aab_url,
-            "last": last[0]["start_ts"] if last else None, **wiki_summary(name)}
+            "last": last[0]["start_ts"] if last else None}
 
 
 @app.get("/prefs")

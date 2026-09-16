@@ -39,9 +39,6 @@ export interface SpeciesInfo {
   today: number;
   last: string | null;
   aab_url: string;
-  extract: string;
-  thumb: string;
-  url: string;
 }
 
 export interface Prefs {
