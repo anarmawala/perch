@@ -12,13 +12,17 @@ WORKDIR /app
 
 # Compile bytecode for faster cold starts; copy (don't hardlink) wheels into the layer.
 # The lockfile pins CPU-only torch (see pyproject [tool.uv.sources]), so no CUDA bloat.
+# Longer HTTP timeout for slow/flaky package mirrors.
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
+    UV_HTTP_TIMEOUT=180 \
     PATH="/app/.venv/bin:$PATH"
 
 # Dependencies first — this layer is cached and only rebuilds when deps change.
+# A persistent uv cache mount keeps already-downloaded wheels across builds, so a
+# retry after a flaky-network failure resumes instead of re-fetching everything.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-cache
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 
 COPY . .
 
