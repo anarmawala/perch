@@ -311,9 +311,10 @@ def _start_ffmpeg():
     # scale=fixed so the raw frame size is known for np.reshape.
     if url.startswith("rtsp://"):
         # RTSP (the real camera): force TCP — UDP drops packets on a 4K stream and
-        # smears frames. No -rw_timeout: it's rejected by the RTSP demuxer; the
-        # watchdog (STALL_SEC) restarts ffmpeg if the feed stalls.
-        in_opts = ["-rtsp_transport", "tcp"]
+        # smears frames. nobuffer + low_delay cut decoder latency (LAN camera is
+        # low-latency; no need to buffer ahead). No -rw_timeout: it's rejected by
+        # the RTSP demuxer; the watchdog (STALL_SEC) restarts ffmpeg if it stalls.
+        in_opts = ["-rtsp_transport", "tcp", "-fflags", "nobuffer", "-flags", "low_delay"]
     else:
         # HLS/HTTP (YouTube): reconnect + rw_timeout to ride out transient stalls.
         in_opts = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
