@@ -309,10 +309,15 @@ def _start_ffmpeg():
     url = resolve_stream_url(STREAM_URL)
     # No -r: let ffmpeg pace to the live source's native rate (~30 fps real-time).
     # scale=fixed so the raw frame size is known for np.reshape.
-    # reconnect + rw_timeout: recover from transient network stalls / exit if I/O hangs.
-    cmd = ["ffmpeg", "-loglevel", "error",
-           "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
-           "-rw_timeout", "15000000",
+    if url.startswith("rtsp://"):
+        # RTSP (the real camera): force TCP — UDP drops packets on a 4K stream and
+        # smears frames. The HTTP reconnect flags below don't apply to RTSP.
+        in_opts = ["-rtsp_transport", "tcp", "-rw_timeout", "15000000"]
+    else:
+        # HLS/HTTP (YouTube): reconnect + rw_timeout to ride out transient stalls.
+        in_opts = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+                   "-rw_timeout", "15000000"]
+    cmd = ["ffmpeg", "-loglevel", "error", *in_opts,
            "-i", url, "-an", "-sn",
            "-vf", f"scale={FRAME_W}:{FRAME_H}",
            "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
