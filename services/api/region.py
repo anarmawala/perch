@@ -6,9 +6,9 @@ we're in Pennsylvania), so the classifier lands on the plausible local species.
 
 Source of truth is eBird if you provide a (free) API key:
     export EBIRD_API_KEY=...        # ebird.org/api/keygen
-    export EBIRD_REGION=US-PA       # or US-PA-001 for a county, etc.
-Without a key it falls back to a built-in eastern-US feeder/yard list, which is
-enough to demonstrate the prior. The resolved list is cached to models/.
+    export EBIRD_REGION=US-WA-033   # King County, WA (Redmond); US-WA for the state
+Without a key it falls back to a built-in Puget Sound / King County feeder-yard
+list. The resolved list is cached to DATA_DIR/region_species.json.
 """
 
 import json
@@ -21,24 +21,38 @@ _DATA = Path(os.environ.get("DATA_DIR", _HERE))
 _DATA.mkdir(parents=True, exist_ok=True)
 CACHE = _DATA / "region_species.json"
 EBIRD_KEY = os.environ.get("EBIRD_API_KEY", "")
-EBIRD_REGION = os.environ.get("EBIRD_REGION", "US-PA")
+EBIRD_REGION = os.environ.get("EBIRD_REGION", "US-WA-033")  # King County, WA (Redmond)
 
-# Fallback: common eastern-US feeder & yard birds (used when no eBird key).
+# Fallback: common Puget Sound / King County WA feeder & yard birds (no eBird key).
 FALLBACK = {
-    "American Goldfinch", "House Finch", "Purple Finch", "Northern Cardinal",
-    "Song Sparrow", "White-throated Sparrow", "White-crowned Sparrow", "Dark-eyed Junco",
-    "Blue Jay", "American Crow", "Fish Crow", "Common Raven", "Mourning Dove",
-    "Rock Pigeon", "Downy Woodpecker", "Hairy Woodpecker", "Red-bellied Woodpecker",
-    "Northern Flicker", "Pileated Woodpecker", "Tufted Titmouse", "Carolina Chickadee",
-    "Black-capped Chickadee", "White-breasted Nuthatch", "Red-breasted Nuthatch",
-    "Carolina Wren", "House Wren", "House Sparrow", "European Starling", "Common Grackle",
-    "Red-winged Blackbird", "Brown-headed Cowbird", "American Robin", "Gray Catbird",
-    "Northern Mockingbird", "Brown Thrasher", "Cedar Waxwing", "Ruby-throated Hummingbird",
-    "Eastern Bluebird", "Chipping Sparrow", "Field Sparrow", "Eastern Towhee",
-    "Indigo Bunting", "Rose-breasted Grosbeak", "Baltimore Oriole", "American Kestrel",
-    "Cooper's Hawk", "Sharp-shinned Hawk", "Red-tailed Hawk", "Red-shouldered Hawk",
-    "Mallard", "Canada Goose", "Turkey Vulture", "Great Blue Heron", "Eastern Phoebe",
-    "American Tree Sparrow", "Yellow-rumped Warbler", "Ruby-crowned Kinglet",
+    # finches, siskins, sparrows, juncos, towhees
+    "American Goldfinch", "Lesser Goldfinch", "House Finch", "Purple Finch", "Pine Siskin",
+    "Dark-eyed Junco", "Song Sparrow", "Fox Sparrow", "Golden-crowned Sparrow",
+    "White-crowned Sparrow", "White-throated Sparrow", "Spotted Towhee", "House Sparrow",
+    # chickadees, nuthatch, wrens, bushtit, creeper
+    "Black-capped Chickadee", "Chestnut-backed Chickadee", "Red-breasted Nuthatch",
+    "Bushtit", "Bewick's Wren", "Pacific Wren", "Brown Creeper",
+    # jays and corvids
+    "Steller's Jay", "California Scrub-Jay", "American Crow", "Common Raven",
+    # woodpeckers
+    "Northern Flicker", "Downy Woodpecker", "Hairy Woodpecker", "Pileated Woodpecker",
+    # thrushes, waxwing, starling
+    "American Robin", "Varied Thrush", "Cedar Waxwing", "European Starling",
+    # hummingbirds
+    "Anna's Hummingbird", "Rufous Hummingbird",
+    # doves and pigeons
+    "Mourning Dove", "Band-tailed Pigeon", "Eurasian Collared-Dove", "Rock Pigeon",
+    # blackbirds
+    "Red-winged Blackbird", "Brewer's Blackbird", "Brown-headed Cowbird",
+    # kinglets and warblers
+    "Golden-crowned Kinglet", "Ruby-crowned Kinglet", "Yellow-rumped Warbler",
+    "Townsend's Warbler", "Orange-crowned Warbler", "Wilson's Warbler",
+    # grosbeak, tanager (summer)
+    "Black-headed Grosbeak", "Western Tanager",
+    # raptors (feeder predators / overhead)
+    "Cooper's Hawk", "Sharp-shinned Hawk", "Red-tailed Hawk", "Bald Eagle",
+    # large / passing through
+    "Canada Goose", "Mallard", "Great Blue Heron",
 }
 
 
