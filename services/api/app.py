@@ -311,8 +311,9 @@ def _start_ffmpeg():
     # scale=fixed so the raw frame size is known for np.reshape.
     if url.startswith("rtsp://"):
         # RTSP (the real camera): force TCP — UDP drops packets on a 4K stream and
-        # smears frames. The HTTP reconnect flags below don't apply to RTSP.
-        in_opts = ["-rtsp_transport", "tcp", "-rw_timeout", "15000000"]
+        # smears frames. No -rw_timeout: it's rejected by the RTSP demuxer; the
+        # watchdog (STALL_SEC) restarts ffmpeg if the feed stalls.
+        in_opts = ["-rtsp_transport", "tcp"]
     else:
         # HLS/HTTP (YouTube): reconnect + rw_timeout to ride out transient stalls.
         in_opts = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
