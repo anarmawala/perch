@@ -261,9 +261,10 @@ def resolve_stream_url(source: str) -> str:
 class State:
     def __init__(self):
         self.lock = threading.Lock()
-        self.latest_frame = None          # newest full-res frame (live edge)
-        self.detect_frame = None          # the frame currently being displayed (detector uses this)
-        self.frames = deque(maxlen=max(2, int(30 * BUFFER_SECONDS)))  # full-res jitter buffer
+        self.latest_frame = None          # newest process-res frame (live edge)
+        self.detect_frame = None          # process-res frame being displayed (detector runs YOLO on this)
+        self.detect_frame_full = None     # the SAME frame at decode res (for sharp classifier crops)
+        self.frames = deque(maxlen=max(2, int(30 * BUFFER_SECONDS)))  # jitter buffer of (process, full) pairs
         self.jpeg: bytes | None = None     # newest annotated JPEG for streaming
         self.last_frame_ts = 0.0           # wall-clock of the last decoded frame (watchdog)
         self.proc = None                   # current ffmpeg process (so the watchdog can kill it)
@@ -280,17 +281,53 @@ state = State()
 
 
 # ---------------------------------------------------------------- worker thread
+# Merge a finished track into the latest same-species visit if it ended within this
+# window — one bird that hops around / leaves and returns becomes one visit, not many.
+MERGE_WINDOW_SEC = float(os.environ.get("MERGE_WINDOW_SEC", "120"))
+
+
 def finalize_track(tid, t):
-    """A tracked bird has left -> record the visit if it was a real one."""
+    """A tracked bird has left -> record the visit, merging into a recent same-species
+    visit so a single restless bird doesn't spam the timeline with duplicates."""
     if not t.get("species") or t["frames"] < 2:
         return  # never confidently identified, or too brief -> skip noise
     species = t["species"]
     conf = round(t["best"], 2)
-    seconds = round(t["last"] - t["first"], 1)
-    insert_visit(species, conf,
-                 datetime.fromtimestamp(t["first"]).isoformat(timespec="seconds"),
-                 datetime.fromtimestamp(t["last"]).isoformat(timespec="seconds"),
-                 seconds, t["frames"], t["image"] or "")
+    first, last = t["first"], t["last"]
+    start = datetime.fromtimestamp(first).isoformat(timespec="seconds")
+    end = datetime.fromtimestamp(last).isoformat(timespec="seconds")
+    seconds = round(last - first, 1)
+    img = t["image"] or ""
+    with _db_lock:
+        con = sqlite3.connect(DB_PATH)
+        row = con.execute("SELECT id,end_ts,seconds,frames,species_conf,image FROM visits"
+                          " WHERE species=? ORDER BY id DESC LIMIT 1", (species,)).fetchone()
+        merged = False
+        if row:
+            vid, vend, vsec, vframes, vconf, vimg = row
+            try:
+                gap = first - datetime.fromisoformat(vend).timestamp()
+            except Exception:
+                gap = 1e9
+            if gap <= MERGE_WINDOW_SEC:  # (negative gap = overlapping tracks) also merges
+                # Keep the higher-confidence thumbnail; delete the loser to avoid orphans.
+                if conf > (vconf or 0) and img:
+                    if vimg:
+                        (CAPTURES / vimg).unlink(missing_ok=True)
+                    keep_img, keep_conf = img, conf
+                else:
+                    if img:
+                        (CAPTURES / img).unlink(missing_ok=True)
+                    keep_img, keep_conf = vimg, vconf
+                con.execute("UPDATE visits SET end_ts=?, seconds=?, frames=?, species_conf=?, image=? WHERE id=?",
+                            (end, round((vsec or 0) + seconds, 1), (vframes or 0) + t["frames"],
+                             keep_conf, keep_img, vid))
+                merged = True
+        if not merged:
+            con.execute("INSERT INTO visits(species,species_conf,start_ts,end_ts,seconds,frames,image)"
+                        " VALUES(?,?,?,?,?,?,?)", (species, conf, start, end, seconds, t["frames"], img))
+        con.commit()
+        con.close()
 
 
 # Processing resolution. 1080 is the sweet spot (≈4× the pixels on a bird vs 720,
@@ -300,6 +337,16 @@ def finalize_track(tid, t):
 PROCESS_HEIGHT = int(os.environ.get("PROCESS_HEIGHT", "1080"))
 FRAME_H = PROCESS_HEIGHT
 FRAME_W = (FRAME_H * 16 // 9 + 1) // 2 * 2  # 16:9, even width for bgr24
+
+# Decode resolution — the size ffmpeg outputs and we keep for CLASSIFIER CROPS.
+# Detection/display/motion run at the cheaper PROCESS size; only the species crop is
+# taken from this (aligned) full-res frame. Set DECODE_HEIGHT=2160 for sharp 4K crops
+# without paying to run the whole pipeline at 4K. Default = PROCESS_HEIGHT (no change).
+DECODE_HEIGHT = int(os.environ.get("DECODE_HEIGHT", str(PROCESS_HEIGHT)))
+DECODE_H = DECODE_HEIGHT
+DECODE_W = (DECODE_H * 16 // 9 + 1) // 2 * 2
+FULLRES_CROP = DECODE_H != FRAME_H
+CROP_SCALE = DECODE_H / FRAME_H  # process-coords bbox -> full-res crop coords
 
 
 def _start_ffmpeg():
@@ -321,10 +368,10 @@ def _start_ffmpeg():
                    "-rw_timeout", "15000000"]
     cmd = ["ffmpeg", "-loglevel", "error", *in_opts,
            "-i", url, "-an", "-sn",
-           "-vf", f"scale={FRAME_W}:{FRAME_H}",
+           "-vf", f"scale={DECODE_W}:{DECODE_H}",
            "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
     return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            bufsize=FRAME_W * FRAME_H * 3 * 4)
+                            bufsize=DECODE_W * DECODE_H * 3 * 4)
 
 
 DISPLAY_H = int(FRAME_H * STREAM_MAX_W / FRAME_W)
@@ -339,7 +386,7 @@ def reader():
     state.proc = proc
     state.last_frame_ts = time.time()
     started = time.time()
-    nbytes = FRAME_W * FRAME_H * 3
+    nbytes = DECODE_W * DECODE_H * 3
 
     while state.running:
         raw = proc.stdout.read(nbytes)
@@ -357,10 +404,12 @@ def reader():
                 print("[reader] ffmpeg restart failed:", e); time.sleep(3)
             continue
 
-        frame = np.frombuffer(raw, np.uint8).reshape(FRAME_H, FRAME_W, 3)
+        full = np.frombuffer(raw, np.uint8).reshape(DECODE_H, DECODE_W, 3)
+        # Detection/display run at the cheap process size; keep `full` (aligned) for crops.
+        proc_frame = cv2.resize(full, (FRAME_W, FRAME_H)) if FULLRES_CROP else full
         with state.lock:
-            state.latest_frame = frame          # live edge (for the watchdog / reference)
-            state.frames.append(frame)          # full-res jitter buffer
+            state.latest_frame = proc_frame     # live edge (for the watchdog / reference)
+            state.frames.append((proc_frame, full))   # aligned (process, full) pair
             state.last_frame_ts = time.time()
 
     proc.kill()
@@ -400,18 +449,21 @@ def emitter():
             next_t = time.time()             # fell behind; resync
 
         with state.lock:
-            full = state.frames.popleft() if state.frames else last_disp
-        if full is None:
+            pair = state.frames.popleft() if state.frames else last_disp
+        if pair is None:
             continue
-        last_disp = full
+        last_disp = pair
+        proc_frame, full_frame = pair
         # The detector runs on exactly the frame we're about to show, so the client
-        # overlay is WYSIWYG — boxes match the visible video, not the live edge.
+        # overlay is WYSIWYG — boxes match the visible video, not the live edge. The
+        # aligned full-res copy goes alongside for sharp classifier crops.
         with state.lock:
-            state.detect_frame = full
+            state.detect_frame = proc_frame
+            state.detect_frame_full = full_frame
 
         # Serve a CLEAN downscaled frame — the web client draws boxes/labels itself
         # as a canvas overlay (toggleable), from the normalized /detections data.
-        disp = cv2.resize(full, (STREAM_MAX_W, DISPLAY_H))
+        disp = cv2.resize(proc_frame, (STREAM_MAX_W, DISPLAY_H))
         now = time.time()
         if last_emit:
             etimes.append(now - last_emit)
@@ -469,9 +521,11 @@ def detector():
         cycle_start = time.time()
         with state.lock:
             lf = state.detect_frame          # the frame currently on screen (WYSIWYG)
+            lff = state.detect_frame_full    # same frame at decode res (for sharp crops)
         if lf is None:
             time.sleep(0.05); continue
         frame = lf.copy()
+        crop_src = lff if lff is not None else frame  # full-res source for classifier crops
         now = time.time()
 
         # Motion check (keeps the bg model fresh). Gate on the LARGEST coherent blob,
@@ -551,8 +605,14 @@ def detector():
             # bird, then stops. Sticky label: keep the highest-confidence species seen.
             if t["best"] < CLASSIFY_LOCK_CONF and now - t["last_clf"] >= CLASSIFY_INTERVAL:
                 t["last_clf"] = now
-                pad = 8
-                crop = frame[max(0, y1 - pad):y2 + pad, max(0, x1 - pad):x2 + pad]
+                # Crop from the aligned full-res frame (scaled bbox) so BioCLIP sees a
+                # sharp, detailed bird instead of a ~50px thumbnail. CROP_SCALE=1 when
+                # decode==process, so this is a no-op in the default config.
+                s = CROP_SCALE
+                pad = int(8 * s)
+                fx1, fy1 = max(0, int(x1 * s) - pad), max(0, int(y1 * s) - pad)
+                fx2, fy2 = int(x2 * s) + pad, int(y2 * s) + pad
+                crop = crop_src[fy1:fy2, fx1:fx2]
                 _tc = time.perf_counter()
                 preds = clf.classify(crop, topk=1)
                 clf_ms += (time.perf_counter() - _tc) * 1000
