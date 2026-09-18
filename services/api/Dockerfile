@@ -27,9 +27,10 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 COPY . .
 
 # Bake in the detector weights and export to OpenVINO (Intel CPU runtime, 2-3x
-# faster than torch on the NUC). Export at the inference size so shapes match.
+# faster than torch on the NUC). Export at the inference size so shapes match —
+# 1920 so small/distant feeder birds survive the letterbox (must match YOLO_IMGSZ).
 # Produces /app/yolov8s_openvino_model/, which the detector prefers at runtime.
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8s.pt').export(format='openvino', imgsz=960)"
+RUN python -c "from ultralytics import YOLO; YOLO('yolov8s.pt').export(format='openvino', imgsz=1920)"
 
 # Persistent state (db, photos, prefs) lives here — mounted as a volume.
 ENV DATA_DIR=/app/data \
